@@ -239,20 +239,24 @@ class AuthService {
     print('🔍 [BranchFilter] Branch ID: ${_currentUser?.branchId}');
     print('🔍 [BranchFilter] Is SuperAdmin: ${_currentUser?.isSuperAdmin}');
 
-    if (_currentUser == null || _currentUser!.isSuperAdmin) {
-      print('✅ [BranchFilter] Super admin - NO FILTER applied');
-      return collection; // Super admin sees all data
+    if (_currentUser == null) {
+      print('⚠️ [BranchFilter] No user - returning EMPTY results');
+      return collection.where('branch_id', isEqualTo: '__NO_USER__');
     }
 
+    // If user has a branch_id, filter by it (even if superAdmin for headquarters)
     if (_currentUser!.branchId != null) {
-      // For non-super-admins, ONLY show records with matching branch_id
-      // This excludes records with null or missing branch_id
       print('🔒 [BranchFilter] Filtering by branch_id = ${_currentUser!.branchId}');
       return collection.where('branch_id', isEqualTo: _currentUser!.branchId);
     }
 
-    // If user has no branch assigned and is not super admin, show nothing
-    // This is a safety measure - return an impossible query
+    // SuperAdmin with NO branch_id sees ALL data
+    if (_currentUser!.isSuperAdmin) {
+      print('✅ [BranchFilter] Super admin with no branch - NO FILTER applied');
+      return collection;
+    }
+
+    // Regular user with no branch_id assigned - show nothing
     print('⚠️ [BranchFilter] No branch_id - returning EMPTY results');
     return collection.where('branch_id', isEqualTo: '__NO_BRANCH__');
   }
