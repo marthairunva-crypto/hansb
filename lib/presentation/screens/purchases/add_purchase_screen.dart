@@ -943,10 +943,10 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
             const SizedBox(width: 16),
             const Expanded(
               child: Text(
-                'Purchase Recorded',
+                'Purchase Recorded Successfully!',
                 style: TextStyle(
                   color: AppTheme.textDark,
-                  fontSize: 20,
+                  fontSize: 19,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1002,8 +1002,27 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
               if (!context.mounted) return;
               Navigator.pop(context); // Close dialog
               if (!context.mounted) return;
-              // Navigate back to dashboard to prevent duplicate submissions
+              // Navigate to dashboard with success message
               Navigator.popUntil(context, (route) => route.isFirst);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.white),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Purchase recorded successfully!',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: Colors.green,
+                  duration: Duration(seconds: 3),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
             },
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -1023,8 +1042,27 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
               Navigator.pop(context); // Close dialog
               await _printReceipt(purchaseId, finalNetPayment, totalAdvanceDeducted);
               if (context.mounted) {
-                // Navigate back to dashboard to prevent duplicate submissions
+                // Navigate to dashboard with success message
                 Navigator.popUntil(context, (route) => route.isFirst);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.white),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Receipt printed successfully!',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 3),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
               }
             },
             style: ElevatedButton.styleFrom(

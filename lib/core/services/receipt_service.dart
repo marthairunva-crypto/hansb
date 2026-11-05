@@ -59,18 +59,18 @@ class ReceiptService {
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
             ..._header(layout, businessSettings, branchName: branchName, branchLocation: branchLocation),
-            pw.SizedBox(height: 1.5),
+            pw.SizedBox(height: 2),
             pw.Text(
               'PURCHASE RECEIPT',
               textAlign: pw.TextAlign.center,
               style: pw.TextStyle(
-                fontSize: 8,
+                fontSize: 10,
                 fontWeight: pw.FontWeight.bold,
-                letterSpacing: 0.3,
+                letterSpacing: 0.5,
                 color: _ink,
               ),
             ),
-            pw.SizedBox(height: 1.5),
+            pw.SizedBox(height: 2),
             _dashed(layout),
             _row('No', receiptNumber, valueBold: true, compact: true),
             _row('Date', date, compact: true),
@@ -281,10 +281,10 @@ class ReceiptService {
     String? branchName,
     String? branchLocation,
   }) {
-    // Determine what location to show
+    // Determine what location to show - prioritize branch location
     String locationText;
-    if (branchName != null && branchLocation != null && branchLocation.isNotEmpty) {
-      // Show branch location
+    if (branchLocation != null && branchLocation.isNotEmpty) {
+      // Show branch location (e.g., "Mbale" or "Kampala")
       locationText = '$branchLocation | Tel: ${settings.phone}';
     } else if (settings.city.isNotEmpty) {
       // Show headquarters city
@@ -299,32 +299,33 @@ class ReceiptService {
         settings.companyNameShort.toUpperCase(),
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: pw.FontWeight.bold,
-          letterSpacing: 0.2,
+          letterSpacing: 0.3,
           color: _ink,
         ),
       ),
       if (branchName != null && branchName.isNotEmpty) ...[
-        pw.SizedBox(height: 0.5),
+        pw.SizedBox(height: 1),
         pw.Text(
-          branchName,
+          branchName.toUpperCase(),
           textAlign: pw.TextAlign.center,
           style: pw.TextStyle(
-            fontSize: 7,
+            fontSize: 8,
             fontWeight: pw.FontWeight.bold,
-            color: _soft,
+            letterSpacing: 0.2,
+            color: _ink,
           ),
         ),
       ],
-      pw.SizedBox(height: 1),
+      pw.SizedBox(height: 1.5),
       pw.Text(
         locationText,
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
-          fontSize: 6,
-          fontWeight: pw.FontWeight.bold, // Bold for thermal
-          color: _soft,
+          fontSize: 7.5,
+          fontWeight: pw.FontWeight.bold,
+          color: _ink,
         ),
       ),
       pw.SizedBox(height: 2),
@@ -409,13 +410,13 @@ class ReceiptService {
   static pw.Widget _heading(String text, {bool compact = false}) {
     return pw.Padding(
       padding:
-          pw.EdgeInsets.only(top: compact ? 2 : 6, bottom: compact ? 1.5 : 4),
+          pw.EdgeInsets.only(top: compact ? 2.5 : 6, bottom: compact ? 2 : 4),
       child: pw.Text(
         text,
         style: pw.TextStyle(
-          fontSize: compact ? 7 : 9,
+          fontSize: compact ? 8.5 : 10,
           fontWeight: pw.FontWeight.bold,
-          letterSpacing: compact ? 0.5 : 1.2,
+          letterSpacing: compact ? 0.8 : 1.2,
           color: _ink,
         ),
       ),
@@ -427,28 +428,28 @@ class ReceiptService {
     String value, {
     bool bold = false,
     bool valueBold = false,
-    double size = 9.5,
+    double size = 10,
     bool compact = false,
   }) {
-    final effectiveSize = compact ? 7.5 : size;
-    // Make EVERYTHING bold for thermal printing
+    final effectiveSize = compact ? 8.5 : size;
+    // Make EVERYTHING bold for thermal printing clarity
     final labelStyle = pw.TextStyle(
       fontSize: effectiveSize,
-      fontWeight: pw.FontWeight.bold, // Always bold for thermal
+      fontWeight: pw.FontWeight.bold,
       color: _ink,
     );
     final valueStyle = pw.TextStyle(
       fontSize: effectiveSize,
-      fontWeight: pw.FontWeight.bold, // Always bold for thermal
+      fontWeight: pw.FontWeight.bold,
       color: _ink,
     );
     return pw.Padding(
-      padding: pw.EdgeInsets.symmetric(vertical: compact ? 0.8 : 2.2),
+      padding: pw.EdgeInsets.symmetric(vertical: compact ? 1.2 : 2.5),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(label, style: labelStyle),
-          pw.SizedBox(width: compact ? 3 : 8),
+          pw.SizedBox(width: compact ? 4 : 8),
           pw.Expanded(
             child: pw.Text(
               value,
