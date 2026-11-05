@@ -11,6 +11,8 @@ class BusinessSettings {
   final String phone;
   final String? phoneAlt;
   final String? email;
+  final String receiptFooterMessage; // Custom footer message
+  final String receiptPoweredBy; // "Powered by" text
   final DateTime? updatedAt;
 
   BusinessSettings({
@@ -25,6 +27,8 @@ class BusinessSettings {
     required this.phone,
     this.phoneAlt,
     this.email,
+    this.receiptFooterMessage = 'Thank you!',
+    this.receiptPoweredBy = 'Powered by Infinitech',
     this.updatedAt,
   });
 
@@ -40,6 +44,8 @@ class BusinessSettings {
       'phone': phone,
       'phone_alt': phoneAlt,
       'email': email,
+      'receipt_footer_message': receiptFooterMessage,
+      'receipt_powered_by': receiptPoweredBy,
       'updated_at': updatedAt?.toIso8601String(),
     };
   }
@@ -57,6 +63,8 @@ class BusinessSettings {
       phone: map['phone'] ?? '0392945082',
       phoneAlt: map['phone_alt'],
       email: map['email'],
+      receiptFooterMessage: map['receipt_footer_message'] ?? 'Thank you!',
+      receiptPoweredBy: map['receipt_powered_by'] ?? 'Powered by Infinitech',
       updatedAt: map['updated_at'] != null && map['updated_at'] is String
           ? DateTime.parse(map['updated_at'])
           : null,
@@ -76,6 +84,8 @@ class BusinessSettings {
       phone: '0392945082',
       phoneAlt: '0706256453',
       email: 'hansbtrading@gmail.com',
+      receiptFooterMessage: 'Thank you!',
+      receiptPoweredBy: 'Powered by Infinitech',
     );
   }
 
@@ -91,6 +101,8 @@ class BusinessSettings {
     String? phone,
     String? phoneAlt,
     String? email,
+    String? receiptFooterMessage,
+    String? receiptPoweredBy,
     DateTime? updatedAt,
   }) {
     return BusinessSettings(
@@ -105,6 +117,8 @@ class BusinessSettings {
       phone: phone ?? this.phone,
       phoneAlt: phoneAlt ?? this.phoneAlt,
       email: email ?? this.email,
+      receiptFooterMessage: receiptFooterMessage ?? this.receiptFooterMessage,
+      receiptPoweredBy: receiptPoweredBy ?? this.receiptPoweredBy,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }

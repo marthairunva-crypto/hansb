@@ -364,7 +364,7 @@ class ReceiptService {
     return [
       _dashed(layout),
       pw.Text(
-        thanks,
+        settings.receiptFooterMessage,
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
           fontSize: 8.5,
@@ -374,7 +374,7 @@ class ReceiptService {
       ),
       pw.SizedBox(height: 1.5),
       pw.Text(
-        'Powered by Infinitech',
+        settings.receiptPoweredBy,
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
           fontSize: 7,
