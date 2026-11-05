@@ -999,11 +999,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              if (!context.mounted) return;
-              Navigator.pop(context); // Close dialog
-              if (!context.mounted) return;
-              // Navigate to dashboard with success message
-              Navigator.popUntil(context, (route) => route.isFirst);
+              Navigator.of(context).pop(); // Close dialog
+              Navigator.of(context).pop(); // Close purchase screen
+              // Show success message on dashboard
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Row(
@@ -1038,12 +1036,11 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
           ),
           ElevatedButton.icon(
             onPressed: () async {
-              if (!context.mounted) return;
-              Navigator.pop(context); // Close dialog
+              Navigator.of(context).pop(); // Close dialog first
               await _printReceipt(purchaseId, finalNetPayment, totalAdvanceDeducted);
               if (context.mounted) {
-                // Navigate to dashboard with success message
-                Navigator.popUntil(context, (route) => route.isFirst);
+                Navigator.of(context).pop(); // Close purchase screen
+                // Show success message on dashboard
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Row(
