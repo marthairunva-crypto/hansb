@@ -1,0 +1,103 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "hansb_farmers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "branch_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "name",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hansb_farmers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "branch_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hansb_purchases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "branch_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hansb_purchases",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "branch_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "purchaseDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hansb_advances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "branch_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hansb_advances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "branch_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "advanceDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hansb_inventory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "branch_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "coffeeType",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

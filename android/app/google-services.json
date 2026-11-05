@@ -1,0 +1,239 @@
+{
+  "project_info": {
+    "project_number": "320732608084",
+    "firebase_url": "https://my-first-project-e8a6e-default-rtdb.firebaseio.com",
+    "project_id": "my-first-project-e8a6e",
+    "storage_bucket": "my-first-project-e8a6e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:70520e0d8bc4021e66dfc1",
+        "android_client_info": {
+          "package_name": "com.example.biz_manager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:33d193ea3e94905266dfc1",
+        "android_client_info": {
+          "package_name": "com.example.bonefx"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:a61d5479cc047abb66dfc1",
+        "android_client_info": {
+          "package_name": "com.example.cattle_verify"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:451d468808d043da66dfc1",
+        "android_client_info": {
+          "package_name": "com.example.fuellink"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:8c6420b060df86b966dfc1",
+        "android_client_info": {
+          "package_name": "com.example.insurance_go"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:23fb19269cbf885a66dfc1",
+        "android_client_info": {
+          "package_name": "com.example.library_manager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:8bbc4a7926baed9266dfc1",
+        "android_client_info": {
+          "package_name": "com.example.livestocker_monitor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:8be421fd978a7c5566dfc1",
+        "android_client_info": {
+          "package_name": "com.example.mtourism_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:568e565f2fa620c766dfc1",
+        "android_client_info": {
+          "package_name": "com.example.my_farm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:23aea032225e5b0966dfc1",
+        "android_client_info": {
+          "package_name": "com.example.noise_monitor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:e2472149c267cdc566dfc1",
+        "android_client_info": {
+          "package_name": "com.example.ntakeapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:320732608084:android:e8b0c794471c5a0e66dfc1",
+        "android_client_info": {
+          "package_name": "com.example.readingaid2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCswOAVO_R7kMUoCCqzOidbIUKRa4yEb6I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

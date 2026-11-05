@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/hansb_users/$(request.auth.uid)).data.role == 'superAdmin';
+    }
+    
+    // Helper function to check if user belongs to a branch
+    function belongsToBranch(branchId) {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/hansb_users/$(request.auth.uid)).data.branch_id == branchId;
+    }
+    
+    // Users collection
+    match /hansb_users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Branches collection
+    match /branches/{branchId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Business settings
+    match /business_settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Farmers collection
+    match /hansb_farmers/{farmerId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+    
+    // Purchases collection
+    match /hansb_purchases/{purchaseId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+    
+    // Advances collection
+    match /hansb_advances/{advanceId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+    
+    // Inventory collection
+    match /hansb_inventory/{inventoryId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+  }
+}
