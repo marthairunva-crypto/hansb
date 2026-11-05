@@ -943,10 +943,10 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
             const SizedBox(width: 16),
             const Expanded(
               child: Text(
-                'Purchase Recorded Successfully!',
+                'Purchase Recorded',
                 style: TextStyle(
                   color: AppTheme.textDark,
-                  fontSize: 19,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -999,16 +999,15 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              // Close both dialog and purchase screen
               Navigator.of(context).pop(); // Close dialog
-              Future.delayed(Duration(milliseconds: 100), () {
+              Future.delayed(const Duration(milliseconds: 100), () {
                 if (context.mounted) {
                   Navigator.of(context).pop(); // Close purchase screen
                   // Show success on dashboard
-                  Future.delayed(Duration(milliseconds: 200), () {
+                  Future.delayed(const Duration(milliseconds: 200), () {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
+                        const SnackBar(
                           content: Row(
                             children: [
                               Icon(Icons.check_circle, color: Colors.white),
@@ -1047,14 +1046,14 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
             onPressed: () async {
               Navigator.of(context).pop(); // Close dialog
               await _printReceipt(purchaseId, finalNetPayment, totalAdvanceDeducted);
-              await Future.delayed(Duration(milliseconds: 100));
+              await Future.delayed(const Duration(milliseconds: 100));
               if (context.mounted) {
                 Navigator.of(context).pop(); // Close purchase screen
                 // Show success on dashboard
-                Future.delayed(Duration(milliseconds: 200), () {
+                Future.delayed(const Duration(milliseconds: 200), () {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
+                      const SnackBar(
                         content: Row(
                           children: [
                             Icon(Icons.check_circle, color: Colors.white),
@@ -1074,20 +1073,6 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
                     );
                   }
                 });
-              }
-            },
-                          child: Text(
-                            'Receipt printed successfully!',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                    backgroundColor: Colors.green,
-                    duration: Duration(seconds: 3),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
               }
             },
             style: ElevatedButton.styleFrom(
