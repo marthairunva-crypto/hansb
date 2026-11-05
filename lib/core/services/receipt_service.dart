@@ -346,14 +346,14 @@ class ReceiptService {
           color: _ink,
         ),
       ),
-      pw.SizedBox(height: 1),
+      pw.SizedBox(height: 1.5),
       pw.Text(
         data,
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
-          fontSize: 6,
+          fontSize: 7.5,
           fontWeight: pw.FontWeight.bold,
-          color: _soft,
+          color: _ink,
         ),
       ),
     ];
@@ -367,19 +367,19 @@ class ReceiptService {
         thanks,
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
-          fontSize: 7,
+          fontSize: 8.5,
           fontWeight: pw.FontWeight.bold,
           color: _ink,
         ),
       ),
-      pw.SizedBox(height: 1),
+      pw.SizedBox(height: 1.5),
       pw.Text(
         'Powered by Infinitech',
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
-          fontSize: 5.5,
-          fontWeight: pw.FontWeight.bold, // Bold for thermal
-          color: _soft,
+          fontSize: 7,
+          fontWeight: pw.FontWeight.bold,
+          color: _ink,
         ),
       ),
       pw.SizedBox(height: 2),
