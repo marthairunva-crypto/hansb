@@ -44,31 +44,18 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
 
   void _nextStep() {
     if (_currentStep == 0) {
-      // Validate basic info
-      if (_nameController.text.trim().isEmpty || _phoneController.text.trim().isEmpty) {
+      // Validate basic info - only name is required now
+      if (_nameController.text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Please fill in all required fields'),
-            backgroundColor: AppTheme.errorRed,
-          ),
-        );
-        return;
-      }
-    } else if (_currentStep == 1) {
-      // Validate location - all 4 fields required
-      if (_districtController.text.trim().isEmpty || 
-          _subcountyController.text.trim().isEmpty ||
-          _parishController.text.trim().isEmpty ||
-          _villageController.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Please fill in all location fields (District, Subcounty, Parish, Village)'),
+            content: Text('Please enter farmer name'),
             backgroundColor: AppTheme.errorRed,
           ),
         );
         return;
       }
     }
+    // Location step - now optional, no validation needed
 
     if (_currentStep < 2) {
       setState(() {
@@ -103,21 +90,37 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
     try {
       final currentUser = AuthService.instance.currentUser;
       
-      await FirebaseFirestore.instance.collection(AppConstants.farmersCollection).add({
+      final data = {
         'name': _nameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'district': _districtController.text.trim(),
-        'subcounty': _subcountyController.text.trim(),
-        'parish': _parishController.text.trim(),
-        'village': _villageController.text.trim(),
-        'notes': _notesController.text.trim(),
         'isActive': true,
         'totalAdvances': 0.0,
         'branch_id': currentUser?.branchId,
         'branch_name': currentUser?.branchName,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      };
+      
+      // Add optional fields only if they're not empty
+      if (_phoneController.text.trim().isNotEmpty) {
+        data['phone'] = _phoneController.text.trim();
+      }
+      if (_districtController.text.trim().isNotEmpty) {
+        data['district'] = _districtController.text.trim();
+      }
+      if (_subcountyController.text.trim().isNotEmpty) {
+        data['subcounty'] = _subcountyController.text.trim();
+      }
+      if (_parishController.text.trim().isNotEmpty) {
+        data['parish'] = _parishController.text.trim();
+      }
+      if (_villageController.text.trim().isNotEmpty) {
+        data['village'] = _villageController.text.trim();
+      }
+      if (_notesController.text.trim().isNotEmpty) {
+        data['notes'] = _notesController.text.trim();
+      }
+      
+      await FirebaseFirestore.instance.collection(AppConstants.farmersCollection).add(data);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -394,7 +397,7 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
           // Phone Field
           _buildTextField(
             controller: _phoneController,
-            label: 'Phone Number',
+            label: 'Phone Number (Optional)',
             icon: Icons.phone_outlined,
             hint: '0700 XXX XXX',
             keyboardType: TextInputType.phone,
@@ -402,7 +405,7 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
               FilteringTextInputFormatter.allow(RegExp(r'[\d\s+]')),
               LengthLimitingTextInputFormatter(15),
             ],
-            required: true,
+            required: false,
           ),
         ],
       ),
@@ -416,7 +419,7 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Location Details',
+            'Location Details (Optional)',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w700,
@@ -425,7 +428,7 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            'Enter complete location hierarchy',
+            'Location information helps in farmer identification',
             style: TextStyle(
               fontSize: 14,
               color: AppTheme.textGrey,
@@ -436,10 +439,10 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
           // District Field
           _buildTextField(
             controller: _districtController,
-            label: 'District',
+            label: 'District (Optional)',
             icon: Icons.location_city_outlined,
             hint: 'e.g., Wakiso',
-            required: true,
+            required: false,
           ),
           
           SizedBox(height: 20),
@@ -447,10 +450,10 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
           // Subcounty Field
           _buildTextField(
             controller: _subcountyController,
-            label: 'Subcounty',
+            label: 'Subcounty (Optional)',
             icon: Icons.map_outlined,
             hint: 'e.g., Nansana',
-            required: true,
+            required: false,
           ),
           
           SizedBox(height: 20),
@@ -458,10 +461,10 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
           // Parish Field
           _buildTextField(
             controller: _parishController,
-            label: 'Parish',
+            label: 'Parish (Optional)',
             icon: Icons.place_outlined,
             hint: 'e.g., Nabweru',
-            required: true,
+            required: false,
           ),
           
           SizedBox(height: 20),
@@ -469,10 +472,10 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
           // Village Field
           _buildTextField(
             controller: _villageController,
-            label: 'Village',
+            label: 'Village (Optional)',
             icon: Icons.home_outlined,
             hint: 'e.g., Kyengera',
-            required: true,
+            required: false,
           ),
         ],
       ),

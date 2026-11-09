@@ -23,13 +23,55 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _notesController = TextEditingController();
+  final _dateController = TextEditingController();
   bool _isLoading = false;
+  DateTime _selectedDate = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize with current date
+    _dateController.text = _formatDate(_selectedDate);
+  }
 
   @override
   void dispose() {
     _amountController.dispose();
     _notesController.dispose();
+    _dateController.dispose();
     super.dispose();
+  }
+  
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+  
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: AppTheme.accentOrange,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: AppTheme.textDark,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+        _dateController.text = _formatDate(picked);
+      });
+    }
   }
 
   Future<void> _saveAdvance() async {
@@ -45,7 +87,7 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
       final amount = double.parse(_amountController.text);
       final batch = FirebaseFirestore.instance.batch();
 
-      // Add advance record
+      // Add advance record with the selected date
       final advanceRef = FirebaseFirestore.instance.collection(AppConstants.advancesCollection).doc();
       batch.set(advanceRef, {
         'farmerId': widget.farmerId,
@@ -54,6 +96,7 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
         'remainingAmount': amount,
         'notes': _notesController.text.trim(),
         'status': 'active', // active, fully_recovered, cancelled
+        'advanceDate': Timestamp.fromDate(_selectedDate), // User-selected date
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -187,6 +230,33 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    const SizedBox(height: 20),
+                    
+                    // Date Field
+                    TextFormField(
+                      controller: _dateController,
+                      readOnly: true,
+                      onTap: _selectDate,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF212121),
+                        fontWeight: FontWeight.w600,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Advance Date *',
+                        prefixIcon: const Icon(Icons.calendar_today),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.edit, size: 20),
+                          onPressed: _selectDate,
+                          tooltip: 'Change date',
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        helperText: 'Tap to change date if advance was given earlier',
+                        helperStyle: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                    
                     const SizedBox(height: 20),
                     
                     // Amount

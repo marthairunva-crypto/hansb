@@ -20,11 +20,19 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
   final _formKey = GlobalKey<FormState>();
   final _grossWeightController = TextEditingController();
   final _deductionController = TextEditingController();
+  // NEW: Multiple deduction fields
+  final _transportDeductionController = TextEditingController(text: '0');
+  final _qualityDeductionController = TextEditingController(text: '0');
+  final _otherDeductionController = TextEditingController(text: '0');
+  
   final _pricePerKgController = TextEditingController();
   final _advanceController = TextEditingController();
   final _millingChargePerKgController = TextEditingController(text: '300');
   final _farmerSearchController = TextEditingController();
   final _walkInNameController = TextEditingController(); // For walk-in customer name
+  
+  // NEW: Partial payment field
+  final _amountPaidController = TextEditingController();
   
   String? _selectedFarmerId;
   String? _selectedFarmerName;
@@ -38,6 +46,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
   double _totalAmount = 0;
   double _millingCharge = 0;
   double _netPayment = 0;
+  double _balance = 0; // NEW: Balance to track pending amount
   
   // Store last purchase data for receipt
   double _lastGrossWeight = 0;
@@ -48,20 +57,34 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
   void dispose() {
     _grossWeightController.dispose();
     _deductionController.dispose();
+    _transportDeductionController.dispose();
+    _qualityDeductionController.dispose();
+    _otherDeductionController.dispose();
     _pricePerKgController.dispose();
     _advanceController.dispose();
     _millingChargePerKgController.dispose();
     _farmerSearchController.dispose();
     _walkInNameController.dispose();
+    _amountPaidController.dispose();
     super.dispose();
   }
 
   void _calculateAmounts() {
     final grossWeight = double.tryParse(_grossWeightController.text) ?? 0;
     final deduction = double.tryParse(_deductionController.text) ?? 0;
+    
+    // NEW: Calculate total deductions from multiple sources
+    final transportDeduction = double.tryParse(_transportDeductionController.text) ?? 0;
+    final qualityDeduction = double.tryParse(_qualityDeductionController.text) ?? 0;
+    final otherDeduction = double.tryParse(_otherDeductionController.text) ?? 0;
+    final totalMoneyDeduction = transportDeduction + qualityDeduction + otherDeduction;
+    
     final pricePerKg = double.tryParse(_pricePerKgController.text) ?? 0;
     final advance = double.tryParse(_advanceController.text) ?? 0;
     final millingChargePerKg = double.tryParse(_millingChargePerKgController.text) ?? 300;
+    
+    // NEW: Amount actually paid
+    final amountPaid = double.tryParse(_amountPaidController.text) ?? 0;
 
     // Only calculate if we have valid positive values
     if (grossWeight > 0 && pricePerKg > 0) {
@@ -73,11 +96,19 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         millingRatePerKg: millingChargePerKg,
       );
 
+      // Calculate net payment with money deductions
+      final netPaymentBeforeDeductions = result.netPayment;
+      final finalNetPayment = netPaymentBeforeDeductions - totalMoneyDeduction;
+      
+      // Calculate balance (what farmer is still owed)
+      final balance = amountPaid > 0 ? (finalNetPayment - amountPaid) : 0;
+
       setState(() {
         _payableWeight = result.payableWeight;
         _totalAmount = result.coffeeValue;
         _millingCharge = result.millingCharge;
-        _netPayment = result.netPayment;
+        _netPayment = finalNetPayment;
+        _balance = balance;
       });
     } else {
       // Reset calculations if invalid input
@@ -86,6 +117,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         _totalAmount = 0;
         _millingCharge = 0;
         _netPayment = 0;
+        _balance = 0;
       });
     }
   }
@@ -167,6 +199,27 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       final deduction = double.parse(_deductionController.text);
       final pricePerKg = double.parse(_pricePerKgController.text);
       final manualAdvance = double.parse(_advanceController.text.isEmpty ? '0' : _advanceController.text);
+      
+      // NEW: Get deduction amounts
+      final transportDeduction = double.parse(_transportDeductionController.text.isEmpty ? '0' : _transportDeductionController.text);
+      final qualityDeduction = double.parse(_qualityDeductionController.text.isEmpty ? '0' : _qualityDeductionController.text);
+      final otherDeduction = double.parse(_otherDeductionController.text.isEmpty ? '0' : _otherDeductionController.text);
+      
+      // NEW: Get amount paid
+      final amountPaid = double.parse(_amountPaidController.text.isEmpty ? '0' : _amountPaidController.text);
+      
+      // Calculate payment status
+      String paymentStatus = 'paid';
+      if (amountPaid > 0) {
+        if (_balance > 0) {
+          paymentStatus = 'partial';
+        } else if (_balance == 0 && amountPaid >= _netPayment) {
+          paymentStatus = 'paid';
+        }
+      } else {
+        // No payment made means full amount pending
+        paymentStatus = _netPayment > 0 ? 'pending' : 'paid';
+      }
 
       final batch = FirebaseFirestore.instance.batch();
       double totalAdvanceToDeduct = 0;
@@ -242,7 +295,16 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         'totalAmount': _totalAmount,
         'millingCharge': _millingCharge,
         'advanceAmount': totalAdvanceToDeduct,
+        // NEW: Additional deductions
+        'transportDeduction': transportDeduction,
+        'qualityDeduction': qualityDeduction,
+        'otherDeduction': otherDeduction,
+        'totalMoneyDeduction': transportDeduction + qualityDeduction + otherDeduction,
+        // NEW: Payment tracking
         'netPayment': finalNetPayment,
+        'amountPaid': amountPaid > 0 ? amountPaid : finalNetPayment, // If no amount entered, assume full payment
+        'balance': _balance,
+        'paymentStatus': paymentStatus, // paid, partial, pending
         'branch_id': currentUser?.branchId,
         'branch_name': currentUser?.branchName,
         'createdAt': FieldValue.serverTimestamp(),
@@ -266,6 +328,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
           purchaseRef.id,
           totalAdvanceToDeduct,
           finalNetPayment,
+          amountPaid > 0 ? amountPaid : finalNetPayment,
+          _balance,
+          paymentStatus,
         );
       }
     } catch (e) {
@@ -732,6 +797,154 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
                   ],
                 ),
               ),
+              
+              const SizedBox(height: 24),
+
+              // NEW: Money Deductions Section
+              Text(
+                'Money Deductions (Optional)',
+                style: TextStyle(
+                  color: AppTheme.textDark,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Enter any additional deductions in money (UGX)',
+                style: TextStyle(
+                  color: AppTheme.textGrey,
+                  fontSize: 13,
+                ),
+              ),
+              SizedBox(height: 12),
+              
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.borderLight),
+                ),
+                child: Column(
+                  children: [
+                    _buildInputField(
+                      controller: _transportDeductionController,
+                      label: 'Transport Deduction (UGX)',
+                      icon: Icons.local_shipping_outlined,
+                      hint: '0',
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      onChanged: (value) => _calculateAmounts(),
+                    ),
+                    
+                    SizedBox(height: 16),
+                    
+                    _buildInputField(
+                      controller: _qualityDeductionController,
+                      label: 'Quality Deduction (UGX)',
+                      icon: Icons.star_border_outlined,
+                      hint: '0',
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      onChanged: (value) => _calculateAmounts(),
+                    ),
+                    
+                    SizedBox(height: 16),
+                    
+                    _buildInputField(
+                      controller: _otherDeductionController,
+                      label: 'Other Deduction (UGX)',
+                      icon: Icons.more_horiz,
+                      hint: '0',
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      onChanged: (value) => _calculateAmounts(),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // NEW: Payment Section
+              Text(
+                'Payment Details',
+                style: TextStyle(
+                  color: AppTheme.textDark,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Enter amount paid if partial payment',
+                style: TextStyle(
+                  color: AppTheme.textGrey,
+                  fontSize: 13,
+                ),
+              ),
+              SizedBox(height: 12),
+              
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.borderLight),
+                ),
+                child: Column(
+                  children: [
+                    _buildInputField(
+                      controller: _amountPaidController,
+                      label: 'Amount Paid Now (UGX)',
+                      icon: Icons.payments,
+                      hint: 'Leave blank for full payment',
+                      keyboardType: TextInputType.number,
+                      helperText: 'Optional: Enter amount if partial payment, leave blank for full payment',
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      onChanged: (value) => _calculateAmounts(),
+                    ),
+                    
+                    if (_balance > 0) ...[
+                      SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Balance Due: UGX ${_balance.toStringAsFixed(0)}',
+                                style: TextStyle(
+                                  color: Colors.orange.shade900,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    ),
+                  ],
+                ),
+              ),
 
               const SizedBox(height: 24),
 
@@ -776,6 +989,30 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
                     _buildSummaryRow('Total Amount', 'UGX ${_totalAmount.toStringAsFixed(0)}'),
                     Divider(height: 24, color: AppTheme.borderLight),
                     _buildSummaryRow('Milling Charge', '-UGX ${_millingCharge.toStringAsFixed(0)}'),
+                    
+                    // Show money deductions if any
+                    if (double.tryParse(_transportDeductionController.text) != null && double.parse(_transportDeductionController.text) > 0) ...[
+                      Divider(height: 24, color: AppTheme.borderLight),
+                      _buildSummaryRow(
+                        'Transport Deduction', 
+                        '-UGX ${double.parse(_transportDeductionController.text).toStringAsFixed(0)}',
+                      ),
+                    ],
+                    if (double.tryParse(_qualityDeductionController.text) != null && double.parse(_qualityDeductionController.text) > 0) ...[
+                      Divider(height: 24, color: AppTheme.borderLight),
+                      _buildSummaryRow(
+                        'Quality Deduction', 
+                        '-UGX ${double.parse(_qualityDeductionController.text).toStringAsFixed(0)}',
+                      ),
+                    ],
+                    if (double.tryParse(_otherDeductionController.text) != null && double.parse(_otherDeductionController.text) > 0) ...[
+                      Divider(height: 24, color: AppTheme.borderLight),
+                      _buildSummaryRow(
+                        'Other Deduction', 
+                        '-UGX ${double.parse(_otherDeductionController.text).toStringAsFixed(0)}',
+                      ),
+                    ],
+                    
                     if (double.tryParse(_advanceController.text) != null && double.parse(_advanceController.text) > 0) ...[
                       Divider(height: 24, color: AppTheme.borderLight),
                       _buildSummaryRow(
@@ -786,6 +1023,21 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
                     ],
                     Divider(height: 24, thickness: 2, color: AppTheme.borderLight),
                     _buildSummaryRow('NET PAYMENT', 'UGX ${_netPayment.toStringAsFixed(0)}', isBold: true),
+                    
+                    // Show payment details if partial payment
+                    if (_balance > 0) ...[
+                      Divider(height: 24, color: AppTheme.borderLight),
+                      _buildSummaryRow(
+                        'Amount Paid', 
+                        'UGX ${(double.tryParse(_amountPaidController.text) ?? 0).toStringAsFixed(0)}',
+                      ),
+                      Divider(height: 24, color: AppTheme.borderLight),
+                      _buildSummaryRow(
+                        'Balance Due', 
+                        'UGX ${_balance.toStringAsFixed(0)}',
+                        isAdvance: true,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -918,6 +1170,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
     String purchaseId,
     double totalAdvanceDeducted,
     double finalNetPayment,
+    double amountPaid,
+    double balance,
+    String paymentStatus,
   ) {
     // Store last values for receipt
     _lastGrossWeight = double.parse(_grossWeightController.text);
@@ -1045,7 +1300,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
           ElevatedButton.icon(
             onPressed: () async {
               Navigator.of(context).pop(); // Close dialog
-              await _printReceipt(purchaseId, finalNetPayment, totalAdvanceDeducted);
+              await _printReceipt(purchaseId, finalNetPayment, totalAdvanceDeducted, amountPaid, balance, paymentStatus);
               await Future.delayed(const Duration(milliseconds: 100));
               if (context.mounted) {
                 Navigator.of(context).pop(); // Close purchase screen
@@ -1097,7 +1352,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
     );
   }
 
-  Future<void> _printReceipt(String purchaseId, double netPayment, double advanceDeducted) async {
+  Future<void> _printReceipt(String purchaseId, double netPayment, double advanceDeducted, double amountPaid, double balance, String paymentStatus) async {
     try {
       final receiptNumber = '${AppConstants.purchasePrefix}${purchaseId.substring(0, 8).toUpperCase()}';
       final date = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
@@ -1138,6 +1393,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         millingCharge: _millingCharge,
         netPayment: netPayment,
         advanceDeducted: advanceDeducted,
+        amountPaid: amountPaid,
+        balance: balance,
+        paymentStatus: paymentStatus,
         date: date,
         branchName: currentUser?.branchName,
         branchLocation: branchLocation,

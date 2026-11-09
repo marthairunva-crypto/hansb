@@ -39,6 +39,9 @@ class ReceiptService {
     required double millingCharge,
     required double netPayment,
     required double advanceDeducted,
+    required double amountPaid,
+    required double balance,
+    required String paymentStatus,
     required String date,
     String? branchName,
     String? branchLocation,
@@ -94,6 +97,56 @@ class ReceiptService {
               _row('Advance', '- ${_ugx(advanceDeducted)}', compact: true),
             pw.SizedBox(height: 1.5),
             _totalBox('NET', _ugx(netPayment)),
+            pw.SizedBox(height: 2),
+            // Payment Status Section
+            if (paymentStatus == 'partial' || paymentStatus == 'pending') ...[
+              _dashed(layout),
+              _heading('PAYMENT STATUS', compact: true),
+              _row('Amount Paid', _ugx(amountPaid), compact: true, valueBold: true),
+              if (balance > 0) ...[
+                pw.SizedBox(height: 1),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 3),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey300,
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'BALANCE DUE',
+                        style: pw.TextStyle(
+                          fontSize: 8,
+                          fontWeight: pw.FontWeight.bold,
+                          color: _ink,
+                        ),
+                      ),
+                      pw.Text(
+                        _ugx(balance),
+                        style: pw.TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: pw.FontWeight.bold,
+                          color: _ink,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              pw.SizedBox(height: 2),
+            ] else ...[
+              pw.SizedBox(height: 1),
+              pw.Text(
+                'PAID IN FULL',
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(
+                  fontSize: 7.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: _soft,
+                ),
+              ),
+            ],
             pw.SizedBox(height: 2),
             // Add barcode
             ..._barcode(receiptNumber, layout),
