@@ -44,7 +44,7 @@ dependencies:
   cloud_firestore: ^6.10.0
   firebase_storage: ^13.6.0
   firebase_analytics: ^12.6.0
-  firebase_messaging: ^15.1.7
+  firebase_messaging: ^16.7.0
   
   # Local Storage
   shared_preferences: ^2.2.2

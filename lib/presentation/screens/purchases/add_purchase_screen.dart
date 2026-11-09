@@ -109,7 +109,7 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         _totalAmount = result.coffeeValue;
         _millingCharge = result.millingCharge;
         _netPayment = finalNetPayment;
-        _balance = balance;
+        _balance = balance.toDouble(); // Convert to double
       });
     } else {
       // Reset calculations if invalid input
@@ -951,7 +951,6 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
                         ),
                       ),
                     ],
-                    ),
                   ],
                 ),
               ),
