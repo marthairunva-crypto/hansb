@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/notification_service.dart';
 
 /// Add Advance to Farmer Screen
 class AddAdvanceScreen extends StatefulWidget {
@@ -109,6 +111,16 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
       });
 
       await batch.commit();
+
+      // Send notification to branch users
+      final currentUser = AuthService.instance.currentUser;
+      if (currentUser?.branchId != null) {
+        NotificationService.instance.notifyAdvanceGiven(
+          farmerName: widget.farmerName,
+          amount: amount,
+          branchId: currentUser!.branchId!,
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

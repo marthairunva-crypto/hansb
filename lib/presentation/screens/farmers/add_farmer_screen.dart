@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/notification_service.dart';
 
 /// Modern Add New Farmer Screen - Multi-Step Form
 class AddFarmerScreen extends StatefulWidget {
@@ -121,6 +122,14 @@ class _AddFarmerScreenState extends State<AddFarmerScreen> {
       }
       
       await FirebaseFirestore.instance.collection(AppConstants.farmersCollection).add(data);
+
+      // Send notification to branch users
+      if (currentUser?.branchId != null) {
+        NotificationService.instance.notifyFarmerAdded(
+          farmerName: _nameController.text.trim(),
+          branchId: currentUser!.branchId!,
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

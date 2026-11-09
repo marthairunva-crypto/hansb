@@ -15,6 +15,7 @@ class AppConstants {
   static const String purchasesCollection = 'hansb_purchases';
   static const String advancesCollection = 'hansb_advances';
   static const String salesCollection = 'hansb_sales';
+  static const String notificationsCollection = 'hansb_notifications';
   
   // Currency
   static const String currency = 'UGX';

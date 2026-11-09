@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/receipt_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../domain/services/coffee_calculation_service.dart';
 
@@ -320,6 +321,15 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
       }
 
       await batch.commit();
+
+      // Send notification to branch users
+      if (currentUser?.branchId != null) {
+        NotificationService.instance.notifyPurchaseCreated(
+          farmerName: customerName,
+          netPayment: finalNetPayment,
+          branchId: currentUser!.branchId!,
+        );
+      }
 
       if (mounted) {
         // Show success with receipt option

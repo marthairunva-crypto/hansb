@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:device_preview/device_preview.dart';
 import 'core/services/firebase_config.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/notification_service.dart';
 import 'core/services/user_init_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
@@ -53,6 +54,10 @@ void main() async {
   // Load user session (with a time limit)
   await _safeInit('Auth Service', () => AuthService.instance.initializeSession(),
       timeout: const Duration(seconds: 6));
+
+  // Initialize notifications (with a time limit)
+  await _safeInit('Notifications', () => NotificationService.instance.initialize(),
+      timeout: const Duration(seconds: 5));
 
   // NOTE: orientation is not locked, so tablets, foldables and landscape
   // phones work with the responsive screens.
