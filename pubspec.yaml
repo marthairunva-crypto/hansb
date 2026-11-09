@@ -101,14 +101,20 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^4.0.0
-  # flutter_launcher_icons: ^0.14.4 - DISABLED to prevent splash icons
+  flutter_launcher_icons: ^0.14.4
 
-# flutter_launcher_icons: - DISABLED
-#   android: true
-#   ios: true
-#   image_path: "assets/logo.jpg"
-#   adaptive_icon_background: "#2D1B12"
-#   adaptive_icon_foreground: "assets/logo.jpg"
+flutter_launcher_icons:
+  android: true
+  ios: true
+  web:
+    generate: true
+    image_path: "assets/logo.jpg"
+    background_color: "#2D1B12"
+    theme_color: "#6F4E37"
+  image_path: "assets/logo.jpg"
+  adaptive_icon_background: "#2D1B12"
+  adaptive_icon_foreground: "assets/logo.jpg"
+  min_sdk_android: 21
 
 # Note: flutter_native_splash removed - using custom Flutter splash screen instead
 

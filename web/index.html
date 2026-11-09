@@ -33,18 +33,176 @@
   <style id="splash-screen-style">
     body {
       margin: 0;
-      background-color: #6F4E37;
+      background: linear-gradient(135deg, #F7FAF8 0%, #FFFFFF 50%, #F7FAF8 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    
+    #splash-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    
+    #splash-logo {
+      width: 140px;
+      height: 140px;
+      border-radius: 35px;
+      object-fit: cover;
+      box-shadow: 0 10px 40px rgba(76, 175, 80, 0.2), 0 5px 20px rgba(0, 0, 0, 0.1);
+      background: white;
+      animation: fadeInScale 1s ease-out;
+    }
+    
+    #splash-brand {
+      margin-top: 24px;
+      display: inline-block;
+      padding: 8px 16px;
+      background: rgba(76, 175, 80, 0.1);
+      border-radius: 20px;
+      border: 1px solid rgba(76, 175, 80, 0.2);
+      animation: fadeIn 1s ease-out 0.3s both;
+    }
+    
+    #splash-brand-text {
+      color: #4CAF50;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+    }
+    
+    #splash-company {
+      margin-top: 20px;
+      text-align: center;
+      animation: fadeIn 1s ease-out 0.5s both;
+    }
+    
+    #splash-company h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 800;
+      color: #14231B;
+      letter-spacing: 0.5px;
+    }
+    
+    #splash-company p {
+      margin: 8px 0 0 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #5F6B64;
+      letter-spacing: 1.2px;
+    }
+    
+    #splash-progress {
+      margin-top: 60px;
+      width: 200px;
+      height: 6px;
+      background: rgba(76, 175, 80, 0.15);
+      border-radius: 8px;
+      overflow: hidden;
+      animation: fadeIn 1s ease-out 0.7s both;
+    }
+    
+    #splash-progress-bar {
+      height: 100%;
+      background: #4CAF50;
+      border-radius: 8px;
+      animation: progressBar 2.5s ease-out;
+    }
+    
+    #splash-status {
+      margin-top: 16px;
+      color: #5F6B64;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      animation: fadeIn 1s ease-out 0.9s both;
+    }
+    
+    #splash-footer {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 12px;
+      color: #5F6B64;
+      animation: fadeIn 1s ease-out 1.1s both;
+    }
+    
+    #splash-footer strong {
+      color: #4CAF50;
+      font-weight: 700;
+    }
+    
+    @keyframes fadeInScale {
+      from {
+        opacity: 0;
+        transform: scale(0.85);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+    
+    @keyframes progressBar {
+      from {
+        width: 0%;
+      }
+      to {
+        width: 100%;
+      }
     }
   </style>
   <script id="splash-screen-script">
     function removeSplashFromWeb() {
+      const splash = document.getElementById('splash-container');
+      if (splash) {
+        splash.style.transition = 'opacity 0.4s ease-out';
+        splash.style.opacity = '0';
+        setTimeout(() => splash.remove(), 400);
+      }
       document.body.style.background = "transparent";
     }
   </script>
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
 </head>
 <body>
-  <!-- Splash screen removed for cleaner loading -->
+  <!-- Professional Splash Screen -->
+  <div id="splash-container">
+    <img id="splash-logo" src="favicon.png" alt="HANSB Logo">
+    <div id="splash-brand">
+      <span id="splash-brand-text">☕ COFFEE MANAGEMENT</span>
+    </div>
+    <div id="splash-company">
+      <h1>HANS. B TRADING CO.</h1>
+      <p>COFFEE FACTORY</p>
+    </div>
+    <div id="splash-progress">
+      <div id="splash-progress-bar"></div>
+    </div>
+    <div id="splash-status">Initializing system...</div>
+  </div>
+  <div id="splash-footer">
+    Powered by <strong>Infinitech Innovations Ltd</strong>
+  </div>
+  
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
