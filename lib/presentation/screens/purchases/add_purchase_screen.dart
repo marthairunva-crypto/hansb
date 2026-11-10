@@ -369,8 +369,9 @@ class _AddPurchaseScreenState extends State<AddPurchaseScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppTheme.textDark),
+          icon: Icon(Icons.close, color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
+          tooltip: 'Close',
         ),
         title: Text(
           'New Coffee Purchase',

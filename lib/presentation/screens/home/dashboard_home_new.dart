@@ -173,12 +173,19 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
         barrierDismissible: false,
         builder: (context) => Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: EdgeInsets.zero,
-          child: Container(
-            width: MediaQuery.of(context).size.width,
-            height: MediaQuery.of(context).size.height,
-            color: Colors.white,
-            child: w,
+          insetPadding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 700,
+              maxHeight: MediaQuery.of(context).size.height * 0.92,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                color: Colors.white,
+                child: w,
+              ),
+            ),
           ),
         ),
       );
