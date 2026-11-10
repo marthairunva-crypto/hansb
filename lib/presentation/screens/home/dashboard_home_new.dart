@@ -959,7 +959,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                 style: const TextStyle(fontSize: 13, color: DashPalette.muted)),
           ),
           const SizedBox(height: 12),
-          if (fill) Expanded(child: SingleChildScrollView(child: body)) else body,
+          body, // No scrolling - just show directly (already limited to top 3 + others)
         ],
       ),
     );
@@ -1019,7 +1019,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
               icon: Icons.receipt_long_rounded,
               trailing: _arrowBtn(() => _go(2))),
           const SizedBox(height: 14),
-          if (fill) Expanded(child: SingleChildScrollView(child: box)) else box,
+          box, // No scrolling - just show the box directly
         ],
       ),
     );
@@ -1293,6 +1293,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
     }
 
     final maxRevenue = branches.first.revenue;
+    // Show max 5 branches to avoid scrolling inside
+    final displayBranches = branches.take(5).toList();
 
     return _card(
       child: Column(
@@ -1339,26 +1341,14 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
             ],
           ),
           const SizedBox(height: 16),
-          if (fill)
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    for (var branch in branches) _branchSalesRow(branch, maxRevenue),
-                    const SizedBox(height: 8),
-                    _branchSalesTotalRow(branches.length, totalRevenue, totalKg, totalCount),
-                  ],
-                ),
-              ),
-            )
-          else
-            Column(
-              children: [
-                for (var branch in branches) _branchSalesRow(branch, maxRevenue),
-                const SizedBox(height: 8),
-                _branchSalesTotalRow(branches.length, totalRevenue, totalKg, totalCount),
-              ],
-            ),
+          // No Expanded or SingleChildScrollView - just show items directly
+          Column(
+            children: [
+              for (var branch in displayBranches) _branchSalesRow(branch, maxRevenue),
+              const SizedBox(height: 8),
+              _branchSalesTotalRow(branches.length, totalRevenue, totalKg, totalCount),
+            ],
+          ),
         ],
       ),
     );
