@@ -268,7 +268,15 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
             const SizedBox(width: 16),
             Expanded(flex: 4, child: _topFarmersCard(d, fill: true)),
             const SizedBox(width: 16),
-            Expanded(flex: 5, child: _activityCard(d, fill: true)),
+            Expanded(flex: 5, child: _branchSalesCard(d, fill: true)),
+          ],
+        );
+        final rowC = Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 6, child: _activityCard(d, fill: true)),
+            const SizedBox(width: 16),
+            Expanded(flex: 9, child: const SizedBox()), // Placeholder
           ],
         );
         if (fit) {
@@ -281,6 +289,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                 SizedBox(height: 206, child: rowA),
                 const SizedBox(height: 16),
                 Expanded(child: rowB),
+                const SizedBox(height: 16),
+                SizedBox(height: 240, child: rowC),
                 const SizedBox(height: 16),
                 _footer(),
               ],
@@ -296,6 +306,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
               SizedBox(height: 206, child: rowA),
               const SizedBox(height: 16),
               SizedBox(height: 500, child: rowB),
+              const SizedBox(height: 16),
+              SizedBox(height: 240, child: rowC),
               const SizedBox(height: 24),
               _footer(),
             ],
@@ -313,6 +325,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
       ];
       final right = <Widget>[
         _topFarmersCard(d),
+        const SizedBox(height: 16),
+        _branchSalesCard(d),
         const SizedBox(height: 16),
         _activityCard(d),
         const SizedBox(height: 16),
@@ -1156,6 +1170,197 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ───────────────────────── Branch Sales Breakdown ─────────────────────────
+
+  Widget _branchSalesCard(_Data d, {bool fill = false}) {
+    final branches = d.branchSales.values.toList()
+      ..sort((a, b) => b.revenue.compareTo(a.revenue));
+
+    if (branches.isEmpty) {
+      return _card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: DashPalette.blue.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: const Icon(Icons.store_rounded,
+                      size: 16, color: DashPalette.blue),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Branch Sales',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: DashPalette.ink,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'No sales data available',
+                  style: TextStyle(fontSize: 14, color: DashPalette.muted),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final maxRevenue = branches.first.revenue;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: DashPalette.blue.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(Icons.store_rounded,
+                    size: 16, color: DashPalette.blue),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Branch Sales',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: DashPalette.ink,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: DashPalette.greenSoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${branches.length} ${branches.length == 1 ? 'branch' : 'branches'}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: DashPalette.greenDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (fill)
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    for (var branch in branches) _branchSalesRow(branch, maxRevenue),
+                  ],
+                ),
+              ),
+            )
+          else
+            Column(
+              children: [
+                for (var branch in branches) _branchSalesRow(branch, maxRevenue),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _branchSalesRow(_BranchSales branch, double maxRevenue) {
+    final formatter = NumberFormat('#,###', 'en_US');
+    final percentage = maxRevenue > 0 ? (branch.revenue / maxRevenue) : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  branch.branchName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: DashPalette.ink,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'UGX ${formatter.format(branch.revenue.round())}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: DashPalette.greenDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: percentage.clamp(0.0, 1.0),
+                    minHeight: 6,
+                    backgroundColor: DashPalette.greenSoft,
+                    valueColor: const AlwaysStoppedAnimation(DashPalette.green),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${branch.kg.toStringAsFixed(1)} kg',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: DashPalette.muted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${branch.count} ${branch.count == 1 ? 'purchase' : 'purchases'}',
+            style: const TextStyle(
+              fontSize: 11,
+              color: DashPalette.muted,
+            ),
+          ),
+        ],
       ),
     );
   }
