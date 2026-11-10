@@ -716,15 +716,19 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _iconAction(Icons.edit_outlined, 'Edit user',
-                    DashPalette.greenDark,
-                    () => _openForm(userId: u.id, userData: u.data)),
+                Flexible(
+                  child: _iconAction(Icons.edit_outlined, 'Edit user',
+                      DashPalette.greenDark,
+                      () => _openForm(userId: u.id, userData: u.data)),
+                ),
                 const SizedBox(width: 4),
-                _iconAction(
-                  u.isActive ? Icons.block_rounded : Icons.check_circle_outline_rounded,
-                  u.isActive ? 'Deactivate' : 'Activate',
-                  u.isActive ? DashPalette.red : DashPalette.green,
-                  () => _toggleUserStatus(u.id, u.isActive),
+                Flexible(
+                  child: _iconAction(
+                    u.isActive ? Icons.block_rounded : Icons.check_circle_outline_rounded,
+                    u.isActive ? 'Deactivate' : 'Activate',
+                    u.isActive ? DashPalette.red : DashPalette.green,
+                    () => _toggleUserStatus(u.id, u.isActive),
+                  ),
                 ),
               ],
             ),

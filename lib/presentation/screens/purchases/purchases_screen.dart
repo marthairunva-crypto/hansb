@@ -620,11 +620,15 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      _iconAction(Icons.visibility_outlined, 'View',
-                          DashPalette.blue, () => _showDetails(p)),
+                      Flexible(
+                        child: _iconAction(Icons.visibility_outlined, 'View',
+                            DashPalette.blue, () => _showDetails(p)),
+                      ),
                       const SizedBox(width: 4),
-                      _iconAction(Icons.block_rounded, 'Void',
-                          DashPalette.red, () => _confirmVoid(p)),
+                      Flexible(
+                        child: _iconAction(Icons.block_rounded, 'Void',
+                            DashPalette.red, () => _confirmVoid(p)),
+                      ),
                     ],
                   ),
                 ),
