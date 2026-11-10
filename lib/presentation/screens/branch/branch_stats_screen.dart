@@ -642,7 +642,57 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
             ),
           ),
           const Divider(height: 1, color: DashPalette.border),
-          // List of farmers
+          
+          // Table header
+          Container(
+            color: const Color(0xFFF8F9FA),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: const [
+                SizedBox(width: 52), // Space for avatar
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'NAME',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: DashPalette.muted,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'PHONE',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: DashPalette.muted,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 100,
+                  child: Text(
+                    'STATUS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: DashPalette.muted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: DashPalette.border),
+          
+          // Table rows
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -651,7 +701,7 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
                 const Divider(height: 1, color: DashPalette.border),
             itemBuilder: (context, index) {
               final farmer = farmersList[index];
-              return _farmerTile(
+              return _farmerTableRow(
                 farmer['name'] as String,
                 farmer['phone'] as String,
                 farmer['isActive'] as bool,
@@ -663,7 +713,7 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
     );
   }
 
-  Widget _farmerTile(String name, String phone, bool isActive) {
+  Widget _farmerTableRow(String name, String phone, bool isActive) {
     final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -691,50 +741,53 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          // Name and phone
+          // Name
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w700,
-                    color: DashPalette.ink,
-                  ),
-                ),
-                if (phone.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    phone,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: DashPalette.muted,
-                    ),
-                  ),
-                ],
-              ],
+            flex: 3,
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+                color: DashPalette.ink,
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          // Status badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: isActive
-                  ? DashPalette.greenSoft
-                  : const Color(0xFFEEF1EF),
-              borderRadius: BorderRadius.circular(12),
-            ),
+          // Phone
+          Expanded(
+            flex: 2,
             child: Text(
-              isActive ? 'Active' : 'Inactive',
+              phone.isEmpty ? '—' : phone,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: isActive ? DashPalette.greenDark : DashPalette.muted,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: phone.isEmpty ? DashPalette.muted : DashPalette.ink,
+              ),
+            ),
+          ),
+          // Status badge
+          SizedBox(
+            width: 100,
+            child: Align(
+              alignment: Alignment.center,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? DashPalette.greenSoft
+                      : const Color(0xFFEEF1EF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  isActive ? 'Active' : 'Inactive',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: isActive ? DashPalette.greenDark : DashPalette.muted,
+                  ),
+                ),
               ),
             ),
           ),
