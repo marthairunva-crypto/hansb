@@ -6,6 +6,7 @@ import '../../../core/services/auth_service.dart';
 import '../home/dashboard_home_new.dart' show DashPalette;
 import '../admin/data_migration_screen.dart';
 import '../data_import/import_advances_screen.dart';
+import '../data_import/import_ledger_screen.dart';
 import 'business_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -165,6 +166,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => const ImportAdvancesScreen(),
+                    ),
+                  );
+                },
+              ),
+              _actionTile(
+                icon: Icons.table_chart_rounded,
+                color: Colors.purple,
+                title: 'Import Advance Ledger',
+                subtitle: 'Import from your advance ledger Excel format',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ImportLedgerScreen(),
                     ),
                   );
                 },
