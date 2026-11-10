@@ -38,6 +38,25 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
         .where((d) => d.data()['isActive'] == true)
         .length;
 
+    // Build farmer list with names
+    final farmersList = farmersSnapshot.docs.map((doc) {
+      final data = doc.data();
+      return {
+        'id': doc.id,
+        'name': data['name'] ?? 'Unknown',
+        'phone': data['phone'] ?? '',
+        'isActive': data['isActive'] ?? false,
+      };
+    }).toList();
+
+    // Sort farmers: active first, then alphabetically
+    farmersList.sort((a, b) {
+      if (a['isActive'] != b['isActive']) {
+        return (b['isActive'] as bool ? 1 : 0) - (a['isActive'] as bool ? 1 : 0);
+      }
+      return (a['name'] as String).compareTo(b['name'] as String);
+    });
+
     final purchasesSnapshot = await db
         .collection(AppConstants.purchasesCollection)
         .where('branch_id', isEqualTo: branchId)
@@ -80,6 +99,7 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
       'totalAdvancesRecovered': totalAdvancesRecovered,
       'outstandingAdvances': outstandingAdvances,
       'avgPricePerKg': totalCoffee > 0 ? totalValue / totalCoffee : 0.0,
+      'farmersList': farmersList,
     };
   }
 
@@ -241,6 +261,12 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
         ],
       );
 
+      // Farmers list section
+      final farmersList = s['farmersList'] as List;
+      final farmersListSection = farmersList.isEmpty
+          ? const SizedBox.shrink()
+          : _farmersListSection(farmersList);
+
       final given = _d(s['totalAdvancesGiven']);
       final recovered = _d(s['totalAdvancesRecovered']);
       final rate = given > 0 ? (recovered / given).clamp(0.0, 1.0) : 0.0;
@@ -364,6 +390,12 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
               advances,
               const SizedBox(height: 16),
               details,
+            ],
+
+            // Farmers list (full width below)
+            if (farmersList.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              farmersListSection,
             ],
           ],
         ),
@@ -552,6 +584,158 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
               minHeight: 8,
               backgroundColor: DashPalette.greenSoft,
               valueColor: const AlwaysStoppedAnimation(DashPalette.green),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _farmersListSection(List farmersList) {
+    return Container(
+      width: double.infinity,
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: DashPalette.blue.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.people_rounded,
+                      color: DashPalette.blue, size: 18),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Registered farmers',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: DashPalette.ink,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: DashPalette.greenSoft,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${farmersList.length}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: DashPalette.greenDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: DashPalette.border),
+          // List of farmers
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: farmersList.length,
+            separatorBuilder: (context, index) =>
+                const Divider(height: 1, color: DashPalette.border),
+            itemBuilder: (context, index) {
+              final farmer = farmersList[index];
+              return _farmerTile(
+                farmer['name'] as String,
+                farmer['phone'] as String,
+                farmer['isActive'] as bool,
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _farmerTile(String name, String phone, bool isActive) {
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          // Avatar
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: isActive
+                  ? DashPalette.greenSoft
+                  : const Color(0xFFEEF1EF),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                initial,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: isActive ? DashPalette.greenDark : DashPalette.muted,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Name and phone
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: DashPalette.ink,
+                  ),
+                ),
+                if (phone.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    phone,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: DashPalette.muted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Status badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: isActive
+                  ? DashPalette.greenSoft
+                  : const Color(0xFFEEF1EF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              isActive ? 'Active' : 'Inactive',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: isActive ? DashPalette.greenDark : DashPalette.muted,
+              ),
             ),
           ),
         ],

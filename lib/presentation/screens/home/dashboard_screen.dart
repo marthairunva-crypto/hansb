@@ -104,7 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<Widget> _buildPages() => [
         DashboardHomeNew(onNavigate: _select),
-        const FarmersScreen(),
+        FarmersScreen(), // not const: avoids "Not a constant expression"
         const PurchasesScreen(),
         const InventoryScreen(),
         const ReportsScreen(),

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/utils/currency_formatter.dart';
+import '../home/dashboard_home_new.dart' show DashPalette;
 
 /// Add Advance to Farmer Screen
 class AddAdvanceScreen extends StatefulWidget {
@@ -29,10 +30,11 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
   bool _isLoading = false;
   DateTime _selectedDate = DateTime.now();
 
+  static const _quickAmounts = [100000, 200000, 500000, 1000000];
+
   @override
   void initState() {
     super.initState();
-    // Initialize with current date
     _dateController.text = _formatDate(_selectedDate);
   }
 
@@ -43,30 +45,29 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
     _dateController.dispose();
     super.dispose();
   }
-  
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-  
+
+  String _formatDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+  double get _amount => double.tryParse(_amountController.text) ?? 0;
+
   Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(
+    final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppTheme.accentOrange,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: AppTheme.textDark,
-            ),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: DashPalette.green,
+            onPrimary: Colors.white,
+            surface: Colors.white,
+            onSurface: DashPalette.ink,
           ),
-          child: child!,
-        );
-      },
+        ),
+        child: child!,
+      ),
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
@@ -77,20 +78,17 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
   }
 
   Future<void> _saveAdvance() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final amount = double.parse(_amountController.text);
       final batch = FirebaseFirestore.instance.batch();
 
-      // Add advance record with the selected date
-      final advanceRef = FirebaseFirestore.instance.collection(AppConstants.advancesCollection).doc();
+      final advanceRef = FirebaseFirestore.instance
+          .collection(AppConstants.advancesCollection)
+          .doc();
       batch.set(advanceRef, {
         'farmerId': widget.farmerId,
         'farmerName': widget.farmerName,
@@ -98,13 +96,14 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
         'remainingAmount': amount,
         'notes': _notesController.text.trim(),
         'status': 'active', // active, fully_recovered, cancelled
-        'advanceDate': Timestamp.fromDate(_selectedDate), // User-selected date
+        'advanceDate': Timestamp.fromDate(_selectedDate),
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // Update farmer's total advances
-      final farmerRef = FirebaseFirestore.instance.collection(AppConstants.farmersCollection).doc(widget.farmerId);
+      final farmerRef = FirebaseFirestore.instance
+          .collection(AppConstants.farmersCollection)
+          .doc(widget.farmerId);
       batch.update(farmerRef, {
         'totalAdvances': FieldValue.increment(amount),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -112,7 +111,6 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
 
       await batch.commit();
 
-      // Send notification to branch users
       final currentUser = AuthService.instance.currentUser;
       if (currentUser?.branchId != null) {
         NotificationService.instance.notifyAdvanceGiven(
@@ -125,8 +123,9 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Advance of UGX ${amount.toStringAsFixed(0)} given successfully'),
-            backgroundColor: Colors.green,
+            content: Text(
+                'Advance of ${CurrencyFormatter.formatUGX(amount)} given successfully'),
+            backgroundColor: DashPalette.greenDark,
           ),
         );
         Navigator.pop(context);
@@ -134,266 +133,343 @@ class _AddAdvanceScreenState extends State<AddAdvanceScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AppTheme.errorRed,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: DashPalette.red),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ───────────────────────── UI ─────────────────────────
+
+  InputDecoration _dec(String label, IconData icon,
+      {String? hint, Widget? suffix}) {
+    OutlineInputBorder b(Color c, [double w = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: c, width: w),
+        );
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      labelStyle: const TextStyle(color: DashPalette.muted, fontSize: 14),
+      hintStyle: const TextStyle(color: DashPalette.muted, fontSize: 14),
+      floatingLabelStyle: const TextStyle(
+          color: DashPalette.greenDark, fontWeight: FontWeight.w600),
+      prefixIcon: Icon(icon, color: DashPalette.green, size: 22),
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      enabledBorder: b(DashPalette.border),
+      focusedBorder: b(DashPalette.green, 1.6),
+      errorBorder: b(DashPalette.red),
+      focusedErrorBorder: b(DashPalette.red, 1.6),
+    );
+  }
+
+  Widget _card({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: DashPalette.border),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0E2217).withOpacity(0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _farmerHeader() {
+    final initial =
+        widget.farmerName.isNotEmpty ? widget.farmerName[0].toUpperCase() : '?';
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [DashPalette.ink, DashPalette.greenDark],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.16),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(initial,
+                style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Giving advance to',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.white.withOpacity(0.7))),
+                const SizedBox(height: 3),
+                Text(widget.farmerName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Text(t,
+            style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: DashPalette.ink)),
+      );
+
+  Widget _quickChips() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final v in _quickAmounts)
+          ActionChip(
+            label: Text(CurrencyFormatter.formatUGXCompact(v.toDouble()),
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: DashPalette.greenDark)),
+            backgroundColor: DashPalette.greenSoft,
+            side: BorderSide.none,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
+            onPressed: () => setState(() => _amountController.text = '$v'),
+          ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final amount = _amount;
+
     return Scaffold(
-      backgroundColor: AppTheme.darkBrown,
+      backgroundColor: const Color(0xFFF6F8F7),
       appBar: AppBar(
-        backgroundColor: AppTheme.darkBrown,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        shape: const Border(bottom: BorderSide(color: DashPalette.border)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textLight),
+          icon: const Icon(Icons.arrow_back_rounded, color: DashPalette.ink),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Give Advance',
-          style: TextStyle(color: AppTheme.textLight),
-        ),
+        title: const Text('Give Advance',
+            style: TextStyle(
+                color: DashPalette.ink,
+                fontWeight: FontWeight.w800,
+                fontSize: 18)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              // Farmer Info Card
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppTheme.accentOrange, AppTheme.lightOrange],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.person,
-                        color: Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Giving Advance To',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            widget.farmerName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+      body: SafeArea(
+        child: LayoutBuilder(builder: (context, c) {
+          final pad = c.maxWidth < 560 ? 14.0 : 24.0;
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(pad),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      _farmerHeader(),
+                      const SizedBox(height: 16),
+                      _card(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _sectionTitle('Advance details'),
 
-              const SizedBox(height: 24),
-
-              // Form Card
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Advance Details',
-                      style: TextStyle(
-                        color: AppTheme.textDark,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    
-                    // Date Field
-                    TextFormField(
-                      controller: _dateController,
-                      readOnly: true,
-                      onTap: _selectDate,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF212121),
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Advance Date *',
-                        prefixIcon: const Icon(Icons.calendar_today),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.edit, size: 20),
-                          onPressed: _selectDate,
-                          tooltip: 'Change date',
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                        helperText: 'Tap to change date if advance was given earlier',
-                        helperStyle: const TextStyle(fontSize: 11),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 20),
-                    
-                    // Amount
-                    TextFormField(
-                      controller: _amountController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        color: Color(0xFF212121),
-                        fontWeight: FontWeight.bold,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Amount (UGX) *',
-                        prefixIcon: const Icon(Icons.attach_money, size: 28),
-                        hintText: '0',
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter amount';
-                        }
-                        final amount = double.tryParse(value);
-                        if (amount == null || amount <= 0) {
-                          return 'Please enter a valid amount';
-                        }
-                        return null;
-                      },
-                    ),
-                    
-                    const SizedBox(height: 20),
-                    
-                    // Notes
-                    TextFormField(
-                      controller: _notesController,
-                      maxLines: 3,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF212121),
-                        fontWeight: FontWeight.w500,
-                      ),
-                      decoration: InputDecoration(
-                        labelText: 'Notes (Optional)',
-                        prefixIcon: const Icon(Icons.note),
-                        hintText: 'Reason for advance, payment method, etc.',
-                        filled: true,
-                        fillColor: Colors.grey[50],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Info Box
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.blue.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Colors.blue[700],
-                            size: 24,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'This advance will be automatically deducted from future purchases',
-                              style: TextStyle(
-                                color: Colors.blue[900],
-                                fontSize: 13,
+                            // Date
+                            TextFormField(
+                              controller: _dateController,
+                              readOnly: true,
+                              onTap: _selectDate,
+                              style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: DashPalette.ink),
+                              decoration: _dec(
+                                'Advance date',
+                                Icons.calendar_today_rounded,
+                                suffix: const Icon(Icons.expand_more_rounded,
+                                    color: DashPalette.muted),
                               ),
                             ),
-                          ),
-                        ],
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(4, 6, 0, 0),
+                              child: Text(
+                                  'Change the date if the advance was given earlier.',
+                                  style: TextStyle(
+                                      fontSize: 12, color: DashPalette.muted)),
+                            ),
+                            const SizedBox(height: 18),
+
+                            // Amount
+                            TextFormField(
+                              controller: _amountController,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                              onChanged: (_) => setState(() {}),
+                              style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: DashPalette.ink),
+                              decoration: _dec('Amount (UGX)',
+                                  Icons.payments_outlined,
+                                  hint: '0'),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter amount';
+                                }
+                                final a = double.tryParse(value);
+                                if (a == null || a <= 0) {
+                                  return 'Please enter a valid amount';
+                                }
+                                return null;
+                              },
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(4, 8, 0, 10),
+                              child: Text(
+                                amount > 0
+                                    ? CurrencyFormatter.formatUGX(amount)
+                                    : 'Pick a quick amount or type your own',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: amount > 0
+                                        ? DashPalette.greenDark
+                                        : DashPalette.muted),
+                              ),
+                            ),
+                            _quickChips(),
+                            const SizedBox(height: 18),
+
+                            // Notes
+                            TextFormField(
+                              controller: _notesController,
+                              maxLines: 3,
+                              textCapitalization: TextCapitalization.sentences,
+                              style: const TextStyle(
+                                  fontSize: 15, color: DashPalette.ink),
+                              decoration: _dec('Notes (optional)',
+                                  Icons.sticky_note_2_outlined,
+                                  hint: 'Reason, payment method, etc.'),
+                            ),
+                            const SizedBox(height: 18),
+
+                            // Info
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: DashPalette.blue.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: DashPalette.blue.withOpacity(0.25)),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.info_outline_rounded,
+                                      color: DashPalette.blue, size: 20),
+                                  const SizedBox(width: 10),
+                                  const Expanded(
+                                    child: Text(
+                                      'This advance will be deducted automatically from future purchases.',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          height: 1.35,
+                                          color: DashPalette.ink),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                      const SizedBox(height: 18),
 
-              const SizedBox(height: 24),
-
-              // Save Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _saveAdvance,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentOrange,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
+                      // Save
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _saveAdvance,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: DashPalette.ink,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor:
+                                DashPalette.ink.withOpacity(0.5),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
                           ),
-                        )
-                      : const Text(
-                          'Give Advance',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Icon(Icons.check_circle_outline_rounded,
+                                  size: 22),
+                          label: Text(
+                            _isLoading
+                                ? 'Saving...'
+                                : (amount > 0
+                                    ? 'Give ${CurrencyFormatter.formatUGXCompact(amount)}'
+                                    : 'Give advance'),
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w800),
                           ),
                         ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        }),
       ),
     );
   }
