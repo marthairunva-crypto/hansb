@@ -1180,6 +1180,10 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
     final branches = d.branchSales.values.toList()
       ..sort((a, b) => b.revenue.compareTo(a.revenue));
 
+    final totalRevenue = branches.fold<double>(0, (sum, b) => sum + b.revenue);
+    final totalKg = branches.fold<double>(0, (sum, b) => sum + b.kg);
+    final totalCount = branches.fold<int>(0, (sum, b) => sum + b.count);
+
     if (branches.isEmpty) {
       return _card(
         child: Column(
@@ -1211,12 +1215,12 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
               ],
             ),
             const SizedBox(height: 16),
-            const Center(
+            Center(
               child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text(
-                  'No sales data available',
-                  style: TextStyle(fontSize: 14, color: DashPalette.muted),
+                  'No sales for $_period',
+                  style: const TextStyle(fontSize: 14, color: DashPalette.muted),
                 ),
               ),
             ),
@@ -1261,7 +1265,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${branches.length} ${branches.length == 1 ? 'branch' : 'branches'}',
+                  _period,
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
@@ -1278,6 +1282,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                 child: Column(
                   children: [
                     for (var branch in branches) _branchSalesRow(branch, maxRevenue),
+                    const SizedBox(height: 8),
+                    _branchSalesTotalRow(branches.length, totalRevenue, totalKg, totalCount),
                   ],
                 ),
               ),
@@ -1286,6 +1292,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
             Column(
               children: [
                 for (var branch in branches) _branchSalesRow(branch, maxRevenue),
+                const SizedBox(height: 8),
+                _branchSalesTotalRow(branches.length, totalRevenue, totalKg, totalCount),
               ],
             ),
         ],
@@ -1359,6 +1367,113 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
               fontSize: 11,
               color: DashPalette.muted,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _branchSalesTotalRow(int branchCount, double totalRevenue, double totalKg, int totalCount) {
+    final formatter = NumberFormat('#,###', 'en_US');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: DashPalette.greenSoft,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: DashPalette.green.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.summarize_rounded, 
+                  size: 16, color: DashPalette.greenDark),
+              const SizedBox(width: 6),
+              Text(
+                'TOTAL: $branchCount ${branchCount == 1 ? 'BRANCH' : 'BRANCHES'}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                  color: DashPalette.greenDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Revenue',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: DashPalette.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'UGX ${formatter.format(totalRevenue.round())}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: DashPalette.greenDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'Weight',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: DashPalette.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${totalKg.toStringAsFixed(1)} kg',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: DashPalette.greenDark,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'Purchases',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: DashPalette.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$totalCount',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: DashPalette.greenDark,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
