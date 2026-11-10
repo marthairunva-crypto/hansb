@@ -59,10 +59,10 @@ class _Data {
   double advOutstanding = 0;
   int advCount = 0;
   double allRevenue = 0;
-  Map<String, _BranchSales> branchSales = {}; // NEW: branch-wise sales
+  Map<String, _BranchSales> branchSales = {}; // branch-wise sales
 }
 
-// NEW: Branch sales data
+// Branch sales data
 class _BranchSales {
   final String branchId;
   final String branchName;
@@ -152,7 +152,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
         d.kg += t.kg;
         d.revenue += t.amount;
         byFarmer[t.farmer] = (byFarmer[t.farmer] ?? 0) + t.kg;
-        
+
         // Track branch-wise sales
         if (t.branchId.isNotEmpty) {
           final branch = d.branchSales.putIfAbsent(
@@ -241,130 +241,110 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
     );
   }
 
+  // ───────────────────────── Responsive layout ─────────────────────────
+  //
+  // Driven by the width of the CONTENT area (not the whole window), so it
+  // behaves correctly next to the sidebar / icon rail.
+  //   >= 1100 : 3 columns
+  //   >= 680  : 2 columns
+  //   <  680  : 1 column
+  //
+  // No fixed card heights anywhere: cards grow with their content, and cards
+  // that sit side by side are stretched to equal height with IntrinsicHeight.
+
+  /// Equal-height row of cards with the given flex ratios.
+  Widget _row(List<Widget> cards, List<int> flex, double gap) {
+    final kids = <Widget>[];
+    for (var i = 0; i < cards.length; i++) {
+      if (i > 0) kids.add(SizedBox(width: gap));
+      kids.add(Expanded(flex: flex[i], child: cards[i]));
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: kids,
+      ),
+    );
+  }
+
   Widget _layout(_Data d) {
     return LayoutBuilder(builder: (context, c) {
-      final ultra = c.maxWidth >= 1200;
-      final wide = c.maxWidth >= 900;
-      final narrow = c.maxWidth < 560;
-      final pad = narrow ? 16.0 : 24.0;
+      final w = c.maxWidth;
+      final cols = w >= 1100 ? 3 : (w >= 680 ? 2 : 1);
+      final pad = w < 600 ? 16.0 : (w < 1000 ? 20.0 : 24.0);
+      final gap = w < 600 ? 12.0 : 16.0;
+      // Phones have no desktop header, so show the greeting here.
+      final phone = MediaQuery.of(context).size.width < 720;
+      final gapBox = SizedBox(height: gap);
 
-      // ── Desktop: 3-column grid that fits one screen ──
-      if (ultra) {
-        final fit = c.maxHeight >= 780;
-        final rowA = Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(flex: 6, child: _hero(d)),
-            const SizedBox(width: 16),
-            Expanded(flex: 4, child: _volumeCard(d)),
-            const SizedBox(width: 16),
-            Expanded(flex: 5, child: _advancesCard(d)),
-          ],
-        );
-        final rowB = Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(flex: 6, child: _monthlyCard(d, false, fill: true)),
-            const SizedBox(width: 16),
-            Expanded(flex: 4, child: _topFarmersCard(d, fill: true)),
-            const SizedBox(width: 16),
-            Expanded(flex: 5, child: _branchSalesCard(d, fill: true)),
-          ],
-        );
-        final rowC = Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(flex: 6, child: _activityCard(d, fill: true)),
-            const SizedBox(width: 16),
-            Expanded(flex: 9, child: const SizedBox()), // Placeholder
-          ],
-        );
-        if (fit) {
-          return SingleChildScrollView(
-            padding: EdgeInsets.all(pad),
-            child: Column(
-              children: [
-                _topBar(true),
-                const SizedBox(height: 14),
-                SizedBox(height: 206, child: rowA),
-                const SizedBox(height: 16),
-                IntrinsicHeight(child: rowB),
-                const SizedBox(height: 16),
-                IntrinsicHeight(child: rowC),
-                const SizedBox(height: 16),
-                _footer(),
-              ],
-            ),
-          );
-        }
-        return SingleChildScrollView(
-          padding: EdgeInsets.all(pad),
-          child: Column(
-            children: [
-              _topBar(true),
-              const SizedBox(height: 14),
-              SizedBox(height: 206, child: rowA),
-              const SizedBox(height: 16),
-              SizedBox(height: 500, child: rowB),
-              const SizedBox(height: 16),
-              SizedBox(height: 240, child: rowC),
-              const SizedBox(height: 24),
-              _footer(),
-            ],
-          ),
-        );
+      final List<Widget> body;
+      if (cols == 3) {
+        body = [
+          _row([_hero(d), _volumeCard(d), _advancesCard(d)], [6, 4, 5], gap),
+          gapBox,
+          _row([
+            _monthlyCard(d, false, fill: true),
+            _topFarmersCard(d),
+            _branchSalesCard(d),
+          ], [6, 4, 5], gap),
+          gapBox,
+          _activityCard(d),
+        ];
+      } else if (cols == 2) {
+        body = [
+          _hero(d),
+          gapBox,
+          _row([_volumeCard(d), _advancesCard(d)], [1, 1], gap),
+          gapBox,
+          _monthlyCard(d, false),
+          gapBox,
+          _row([_topFarmersCard(d), _branchSalesCard(d)], [1, 1], gap),
+          gapBox,
+          _activityCard(d),
+        ];
+      } else {
+        body = [
+          _hero(d),
+          gapBox,
+          _volumeCard(d),
+          gapBox,
+          _advancesCard(d),
+          gapBox,
+          _monthlyCard(d, true),
+          gapBox,
+          _topFarmersCard(d),
+          gapBox,
+          _branchSalesCard(d),
+          gapBox,
+          _activityCard(d),
+        ];
       }
 
-      // ── Tablet / mobile ──
-      final left = <Widget>[
-        _hero(d),
-        const SizedBox(height: 16),
-        _volumeCard(d),
-        const SizedBox(height: 16),
-        _monthlyCard(d, narrow),
-      ];
-      final right = <Widget>[
-        _topFarmersCard(d),
-        const SizedBox(height: 16),
-        _branchSalesCard(d),
-        const SizedBox(height: 16),
-        _activityCard(d),
-        const SizedBox(height: 16),
-        _advancesCard(d),
-      ];
+      final user = AuthService.instance.currentUser?.displayName;
 
       return SingleChildScrollView(
         padding: EdgeInsets.all(pad),
-        child: SizedBox(
-          width: double.infinity,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (!wide) ...[
-                Text('${dashGreeting()}, Admin',
-                    style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: DashPalette.ink)),
-                const SizedBox(height: 14),
-              ],
-              _topBar(wide),
-              const SizedBox(height: 18),
-              if (wide)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 11, child: Column(children: left)),
-                    const SizedBox(width: 16),
-                    Expanded(flex: 9, child: Column(children: right)),
-                  ],
-                )
-              else
-                Column(children: [...left, const SizedBox(height: 16), ...right]),
-              const SizedBox(height: 24),
-              _footer(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (phone) ...[
+              Text(
+                '${dashGreeting()}${user != null && user.isNotEmpty ? ', $user' : ''}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: DashPalette.ink),
+              ),
+              const SizedBox(height: 14),
             ],
-          ),
+            _topBar(),
+            SizedBox(height: gap + 2),
+            ...body,
+            const SizedBox(height: 16),
+            _footer(),
+          ],
         ),
       );
     });
@@ -372,7 +352,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
 
   // ───────────────────────── Top bar ─────────────────────────
 
-  Widget _topBar(bool wide) {
+  Widget _topBar() {
     final date = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -393,32 +373,25 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
       ],
     );
 
-    final actions = Row(
-      mainAxisSize: MainAxisSize.min,
+    // Wraps onto a second line instead of overflowing on small screens.
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         _periodDropdown(),
-        const SizedBox(width: 8),
         _ghostBtn(Icons.people_outline_rounded, 'Farmers', () => _go(1)),
-        const SizedBox(width: 8),
         _ghostBtn(Icons.receipt_long_outlined, 'Transactions', () => _go(2)),
-        const SizedBox(width: 8),
         _ghostBtn(Icons.inventory_2_outlined, 'Inventory', () => _go(3)),
       ],
     );
 
-    if (wide) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [date, actions],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        date,
-        const SizedBox(height: 12),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, child: actions),
-      ],
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 12,
+      children: [date, actions],
     );
   }
 
@@ -505,7 +478,10 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
             ],
           ),
         ),
-        if (trailing != null) trailing,
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          trailing,
+        ],
       ],
     );
   }
@@ -602,13 +578,15 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
     final user = AuthService.instance.currentUser;
     final branchName = user?.branchName ?? '';
     final isSuperAdmin = user?.isSuperAdmin ?? false;
-    
+    // Very narrow screens: drop the mini bar graphic, show the badge inline.
+    final compact = MediaQuery.of(context).size.width < 480;
+
     // Determine scope label
     String scopeLabel;
     Color scopeColor;
     IconData scopeIcon;
     String description;
-    
+
     if (isSuperAdmin) {
       scopeLabel = 'All Branches';
       scopeColor = DashPalette.blue;
@@ -625,10 +603,10 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
       scopeIcon = Icons.store_rounded;
       description = 'Branch overview of your purchases, farmers and payments.';
     }
-    
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 16 : 20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: DashPalette.green, width: 1.6),
@@ -640,44 +618,49 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Expanded(
                 child: Text('Coffee Business, Every Day',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: DashPalette.ink)),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: scopeColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: scopeColor,
-                    width: 1.2,
+              const SizedBox(width: 8),
+              Flexible(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: scopeColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: scopeColor, width: 1.2),
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      scopeIcon,
-                      size: 14,
-                      color: scopeColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      scopeLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: scopeColor,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(scopeIcon, size: 14, color: scopeColor),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          scopeLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: scopeColor,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -687,7 +670,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
             description,
             style: const TextStyle(fontSize: 13, color: DashPalette.muted),
           ),
-          const SizedBox(height: 18),
+          SizedBox(height: compact ? 14 : 18),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -726,6 +709,10 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                         ),
                       ],
                     ),
+                    if (compact) ...[
+                      const SizedBox(height: 8),
+                      _badge('${d.count} purchases'),
+                    ],
                     const SizedBox(height: 16),
                     Wrap(
                       spacing: 10,
@@ -740,21 +727,23 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _badge('${d.count} purchases'),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: 80,
-                    height: 60,
-                    child: CustomPaint(
-                        painter: _PixelPainter(d.daily.sublist(6))),
-                  ),
-                ],
-              ),
+              if (!compact) ...[
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _badge('${d.count} purchases'),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: 80,
+                      height: 60,
+                      child: CustomPaint(
+                          painter: _PixelPainter(d.daily.sublist(6))),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ],
@@ -770,23 +759,31 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _cardHeader('Purchase Volume', icon: Icons.scale_rounded, trailing: _arrowBtn(() => _go(3))),
+          _cardHeader('Purchase Volume',
+              icon: Icons.scale_rounded, trailing: _arrowBtn(() => _go(3))),
           const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('$kg kg',
-                      style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w700,
-                          color: DashPalette.ink)),
-                  const SizedBox(height: 8),
-                  _badge('${d.farmers} farmers'),
-                ],
+              Flexible(
+                flex: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text('$kg kg',
+                          style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: DashPalette.ink)),
+                    ),
+                    const SizedBox(height: 8),
+                    _badge('${d.farmers} farmers'),
+                  ],
+                ),
               ),
               const SizedBox(width: 18),
               Expanded(
@@ -807,14 +804,27 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
 
   // ───────────────────────── Monthly bars ─────────────────────────
 
+  /// [fill] = true: the chart stretches to use whatever height the row gives
+  /// the card (only valid when the card sits in an equal-height row).
   Widget _monthlyCard(_Data d, bool narrow, {bool fill = false}) {
-    final chart = SizedBox(
-      width: double.infinity,
-      height: narrow ? 220 : 270,
-      child: CustomPaint(
-        painter: _BarsPainter(d.monthly, DateTime.now().month - 1),
-      ),
-    );
+    final painter = _BarsPainter(d.monthly, DateTime.now().month - 1);
+
+    final Widget chart = fill
+        ? Expanded(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 240),
+              child: SizedBox(
+                width: double.infinity,
+                child: CustomPaint(painter: painter),
+              ),
+            ),
+          )
+        : SizedBox(
+            width: double.infinity,
+            height: narrow ? 220 : 270,
+            child: CustomPaint(painter: painter),
+          );
+
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -930,6 +940,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                             fontWeight: FontWeight.w600,
                             color: DashPalette.ink)),
                   ),
+                  const SizedBox(width: 8),
                   Text('${NumberFormat('#,##0').format(segs[i].value)} kg',
                       style: const TextStyle(
                           fontSize: 13, color: DashPalette.muted)),
@@ -959,7 +970,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                 style: const TextStyle(fontSize: 13, color: DashPalette.muted)),
           ),
           const SizedBox(height: 12),
-          body, // No scrolling - just show directly (already limited to top 3 + others)
+          body, // already limited to top 3 + others
         ],
       ),
     );
@@ -1019,7 +1030,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
               icon: Icons.receipt_long_rounded,
               trailing: _arrowBtn(() => _go(2))),
           const SizedBox(height: 14),
-          box, // No scrolling - just show the box directly
+          box,
         ],
       ),
     );
@@ -1045,27 +1056,31 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
         ? 'N/A'
         : DateFormat('dd MMM').format(t.date);
     final initial = t.farmer.isNotEmpty ? t.farmer[0].toUpperCase() : '?';
+    // On very narrow screens drop the avatar so names have room.
+    final dense = MediaQuery.of(context).size.width < 420;
     return TableRow(
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Row(
             children: [
-              Container(
-                width: 30,
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: DashPalette.greenSoft,
-                  borderRadius: BorderRadius.circular(8),
+              if (!dense) ...[
+                Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: DashPalette.greenSoft,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(initial,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: DashPalette.greenDark)),
                 ),
-                child: Text(initial,
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: DashPalette.greenDark)),
-              ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: Text(t.farmer,
                     maxLines: 1,
@@ -1081,6 +1096,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           child: Text(dateText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w500,
@@ -1179,11 +1196,15 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12.5, color: DashPalette.muted)),
           const SizedBox(height: 6),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: DashPalette.ink)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: DashPalette.ink)),
+          ),
           const SizedBox(height: 8),
           if (progress != null)
             ClipRRect(
@@ -1212,11 +1233,12 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
   Widget _footer() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: RichText(
+          textAlign: TextAlign.center,
           text: const TextSpan(
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               color: DashPalette.muted,
               height: 1.4,
             ),
@@ -1247,36 +1269,41 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
     final totalKg = branches.fold<double>(0, (sum, b) => sum + b.kg);
     final totalCount = branches.fold<int>(0, (sum, b) => sum + b.count);
 
+    Widget header({Widget? trailing}) => Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: DashPalette.blue.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(Icons.store_rounded,
+                  size: 16, color: DashPalette.blue),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Branch Sales',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: DashPalette.ink,
+                ),
+              ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 8), trailing],
+          ],
+        );
+
     if (branches.isEmpty) {
       return _card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: DashPalette.blue.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: const Icon(Icons.store_rounded,
-                      size: 16, color: DashPalette.blue),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    'Branch Sales',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: DashPalette.ink,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            header(),
             const SizedBox(height: 16),
             Center(
               child: Padding(
@@ -1293,62 +1320,36 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
     }
 
     final maxRevenue = branches.first.revenue;
-    // Show max 5 branches to avoid scrolling inside
+    // Show max 5 branches to avoid a very long card
     final displayBranches = branches.take(5).toList();
 
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: DashPalette.blue.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(Icons.store_rounded,
-                    size: 16, color: DashPalette.blue),
+          header(
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: DashPalette.greenSoft,
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  'Branch Sales',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: DashPalette.ink,
-                  ),
+              child: Text(
+                _period,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: DashPalette.greenDark,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: DashPalette.greenSoft,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _period,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: DashPalette.greenDark,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 16),
-          // No Expanded or SingleChildScrollView - just show items directly
-          Column(
-            children: [
-              for (var branch in displayBranches) _branchSalesRow(branch, maxRevenue),
-              const SizedBox(height: 8),
-              _branchSalesTotalRow(branches.length, totalRevenue, totalKg, totalCount),
-            ],
-          ),
+          for (final branch in displayBranches)
+            _branchSalesRow(branch, maxRevenue),
+          const SizedBox(height: 8),
+          _branchSalesTotalRow(
+              branches.length, totalRevenue, totalKg, totalCount),
         ],
       ),
     );
@@ -1380,6 +1381,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
               const SizedBox(width: 8),
               Text(
                 'UGX ${formatter.format(branch.revenue.round())}',
+                maxLines: 1,
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -1426,7 +1428,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
     );
   }
 
-  Widget _branchSalesTotalRow(int branchCount, double totalRevenue, double totalKg, int totalCount) {
+  Widget _branchSalesTotalRow(
+      int branchCount, double totalRevenue, double totalKg, int totalCount) {
     final formatter = NumberFormat('#,###', 'en_US');
 
     return Container(
@@ -1441,95 +1444,60 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
         children: [
           Row(
             children: [
-              const Icon(Icons.summarize_rounded, 
+              const Icon(Icons.summarize_rounded,
                   size: 16, color: DashPalette.greenDark),
               const SizedBox(width: 6),
-              Text(
-                'TOTAL: $branchCount ${branchCount == 1 ? 'BRANCH' : 'BRANCHES'}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                  color: DashPalette.greenDark,
+              Flexible(
+                child: Text(
+                  'TOTAL: $branchCount ${branchCount == 1 ? 'BRANCH' : 'BRANCHES'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: DashPalette.greenDark,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Wrap so the three stats flow onto a second line on narrow cards.
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 16,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Revenue',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: DashPalette.muted,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'UGX ${formatter.format(totalRevenue.round())}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: DashPalette.greenDark,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Weight',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: DashPalette.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${totalKg.toStringAsFixed(1)} kg',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: DashPalette.greenDark,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Purchases',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: DashPalette.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$totalCount',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: DashPalette.greenDark,
-                    ),
-                  ),
-                ],
-              ),
+              _totalStat('Revenue', 'UGX ${formatter.format(totalRevenue.round())}'),
+              _totalStat('Weight', '${totalKg.toStringAsFixed(1)} kg'),
+              _totalStat('Purchases', '$totalCount'),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _totalStat(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: DashPalette.muted),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: DashPalette.greenDark,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1673,6 +1641,7 @@ class _BarsPainter extends CustomPainter {
     const bottomPad = 24.0;
     final chartH = size.height - bottomPad;
     final chartW = size.width - leftPad;
+    if (chartH <= 0 || chartW <= 0) return;
 
     var maxV = values.reduce(math.max);
     if (maxV <= 0) maxV = 1;

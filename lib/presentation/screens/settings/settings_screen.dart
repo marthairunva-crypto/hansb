@@ -5,6 +5,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/services/auth_service.dart';
 import '../home/dashboard_home_new.dart' show DashPalette;
 import '../admin/data_migration_screen.dart';
+import '../data_import/import_advances_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -142,6 +143,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => const DataMigrationScreen(),
+                    ),
+                  );
+                },
+              ),
+              _actionTile(
+                icon: Icons.upload_file_rounded,
+                color: DashPalette.amber,
+                title: 'Import Advances',
+                subtitle: 'Bulk import previous advances from CSV file',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ImportAdvancesScreen(),
                     ),
                   );
                 },

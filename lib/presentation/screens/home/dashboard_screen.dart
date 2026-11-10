@@ -17,8 +17,24 @@ class _NavItem {
   final IconData icon;
   final IconData activeIcon;
   final String label;
-  final bool isAdmin; // Whether this is an admin-only item
-  const _NavItem(this.icon, this.activeIcon, this.label, {this.isAdmin = false});
+  const _NavItem(this.icon, this.activeIcon, this.label);
+}
+
+class _NavSection {
+  final String title;
+  final List<int> indexes;
+  const _NavSection(this.title, this.indexes);
+}
+
+/// compact  : phones            (< 720)   -> app bar + drawer + bottom nav
+/// medium   : tablets / small   (720-1099) -> icon rail + content panel
+/// expanded : desktop           (>= 1100) -> full sidebar + content panel
+enum _Layout { compact, medium, expanded }
+
+_Layout _layoutFor(double width) {
+  if (width >= 1100) return _Layout.expanded;
+  if (width >= 720) return _Layout.medium;
+  return _Layout.compact;
 }
 
 /// Tells the dashboard whether a sub-screen (e.g. "Add Farmer") is open
@@ -27,22 +43,25 @@ class _SubRouteObserver extends NavigatorObserver {
   final ValueNotifier<bool> subOpen;
   _SubRouteObserver(this.subOpen);
 
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    subOpen.value = previousRoute != null;
+  void _update(Route<dynamic>? previousRoute) {
+    // Defer so we never notify listeners in the middle of a build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      subOpen.value = previousRoute != null && !previousRoute.isFirst;
+    });
   }
 
   @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    final prev = previousRoute;
-    subOpen.value = prev != null && !prev.isFirst;
-  }
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => subOpen.value = previousRoute != null);
 
   @override
-  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    final prev = previousRoute;
-    subOpen.value = prev != null && !prev.isFirst;
-  }
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _update(previousRoute);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _update(previousRoute);
 }
 
 /// Main Dashboard Screen - Coffee Business Management
@@ -56,8 +75,10 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  // Nested navigator (desktop): screens opened from any page appear INSIDE
-  // the white content panel, so the sidebar and header stay visible.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  // Nested navigator (medium/expanded): screens opened from any page appear
+  // INSIDE the white content panel, so the sidebar and header stay visible.
   final GlobalKey<NavigatorState> _contentNav = GlobalKey<NavigatorState>();
   final ValueNotifier<int> _indexNotifier = ValueNotifier<int>(0);
   final ValueNotifier<bool> _subOpen = ValueNotifier<bool>(false);
@@ -69,11 +90,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _NavItem(Icons.receipt_long_outlined, Icons.receipt_long_rounded, 'Purchases'),
     _NavItem(Icons.inventory_2_outlined, Icons.inventory_2_rounded, 'Inventory'),
     _NavItem(Icons.bar_chart_outlined, Icons.bar_chart_rounded, 'Reports'),
-    _NavItem(Icons.store_outlined, Icons.store, 'Branch Management', isAdmin: true),
-    _NavItem(Icons.manage_accounts_outlined, Icons.manage_accounts, 'User Management', isAdmin: true),
-    _NavItem(Icons.settings_outlined, Icons.settings, 'Settings', isAdmin: true),
-    _NavItem(Icons.help_outline_rounded, Icons.help, 'Help & Support', isAdmin: true),
+    _NavItem(Icons.store_outlined, Icons.store, 'Branch Management'),
+    _NavItem(Icons.manage_accounts_outlined, Icons.manage_accounts, 'User Management'),
+    _NavItem(Icons.settings_outlined, Icons.settings, 'Settings'),
+    _NavItem(Icons.help_outline_rounded, Icons.help, 'Help & Support'),
   ];
+
+  // Bottom nav on phones: 4 main tabs + "More" (opens the drawer).
+  static const int _bottomTabs = 4;
 
   @override
   void dispose() {
@@ -82,7 +106,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  String _getRoleDisplayName(String role) {
+  // ───────────────────────── Data helpers ─────────────────────────
+
+  String get _userName =>
+      AuthService.instance.currentUser?.displayName ?? 'User';
+
+  String get _initial => _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U';
+
+  String get _roleLabel {
+    final role = AuthService.instance.currentUser?.role.name ?? 'user';
     switch (role) {
       case 'superAdmin':
         return 'Administrator';
@@ -95,6 +127,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  List<_NavSection> get _sections {
+    final isSuper = AuthService.instance.isSuperAdmin;
+    return [
+      const _NavSection('General', [0, 1, 2, 3, 4]),
+      if (isSuper) const _NavSection('Admin', [5, 6]),
+      const _NavSection('Support', [7, 8]),
+    ];
+  }
+
+  Widget _pageFor(int i) {
+    switch (i) {
+      case 0:
+        return DashboardHomeNew(onNavigate: _select);
+      case 1:
+        return FarmersScreen();
+      case 2:
+        return const PurchasesScreen();
+      case 3:
+        return const InventoryScreen();
+      case 4:
+        return const ReportsScreen();
+      case 5:
+        return const BranchManagementScreen();
+      case 6:
+        return UserManagementScreen();
+      case 7:
+        return const SettingsScreen();
+      case 8:
+        return const HelpSupportScreen();
+      default:
+        return DashboardHomeNew(onNavigate: _select);
+    }
+  }
+
   void _select(int i) {
     // Close any open sub-screen (add farmer, etc.) when switching tabs
     _contentNav.currentState?.popUntil((r) => r.isFirst);
@@ -102,63 +168,173 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _indexNotifier.value = i;
   }
 
-  List<Widget> _buildPages() => [
-        DashboardHomeNew(onNavigate: _select),
-        FarmersScreen(), // not const: avoids "Not a constant expression"
-        const PurchasesScreen(),
-        const InventoryScreen(),
-        const ReportsScreen(),
-        const BranchManagementScreen(),
-        UserManagementScreen(),
-        const SettingsScreen(),
-        const HelpSupportScreen(),
-      ];
-
   void _logout() {
     Navigator.of(context, rootNavigator: true)
         .pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
+  // ───────────────────────── Build ─────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= 1000;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = _layoutFor(constraints.maxWidth);
+        return layout == _Layout.compact
+            ? _buildCompact()
+            : _buildPanel(layout, constraints.maxWidth);
+      },
+    );
+  }
 
-    if (isDesktop) {
-      return Scaffold(
-        backgroundColor: DashPalette.outer,
-        floatingActionButton: _fabSlot(isDesktop: true),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                SizedBox(width: 252, child: _sidebar(inDrawer: false)),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      color: Colors.white,
-                      child: Column(
-                        children: [
-                          _desktopHeader(),
-                          const Divider(height: 1, color: DashPalette.line),
-                          Expanded(child: _contentNavigator()),
-                        ],
-                      ),
+  // ───────────────── Medium + Expanded (sidebar / rail) ─────────────────
+
+  Widget _buildPanel(_Layout layout, double width) {
+    final expanded = layout == _Layout.expanded;
+    final gap = expanded ? 16.0 : 10.0;
+    final sidebarWidth = expanded ? (width >= 1300 ? 252.0 : 224.0) : 76.0;
+
+    return Scaffold(
+      backgroundColor: DashPalette.outer,
+      floatingActionButton: _fabSlot(),
+      body: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.all(gap),
+          child: Row(
+            children: [
+              SizedBox(
+                width: sidebarWidth,
+                child: _sidebar(inDrawer: false, collapsed: !expanded),
+              ),
+              SizedBox(width: gap),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    color: Colors.white,
+                    child: Column(
+                      children: [
+                        _panelHeader(showUserText: expanded || width >= 900),
+                        const Divider(height: 1, color: DashPalette.line),
+                        Expanded(child: _contentNavigator()),
+                      ],
                     ),
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The nested navigator that hosts the current page and anything opened from it.
+  Widget _contentNavigator() {
+    return Navigator(
+      key: _contentNav,
+      observers: [_observer],
+      onGenerateRoute: (settings) => MaterialPageRoute(
+        settings: settings,
+        builder: (_) => ValueListenableBuilder<int>(
+          valueListenable: _indexNotifier,
+          builder: (_, i, __) =>
+              KeyedSubtree(key: ValueKey(i), child: _pageFor(i)),
+        ),
+      ),
+    );
+  }
+
+  Widget _fabSlot() {
+    return ValueListenableBuilder<bool>(
+      valueListenable: _subOpen,
+      builder: (_, open, __) =>
+          open ? const SizedBox.shrink() : (_buildFAB(isPanel: true) ?? const SizedBox.shrink()),
+    );
+  }
+
+  Widget _panelHeader({required bool showUserText}) {
+    final title = _selectedIndex == 0
+        ? '${dashGreeting()}, $_userName'
+        : _nav[_selectedIndex].label;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: DashPalette.ink,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          _headerIcon(Icons.notifications_none_rounded, () {}),
+          const SizedBox(width: 8),
+          _headerIcon(Icons.bolt_rounded, () => _select(2)), // quick: Purchases
+          const SizedBox(width: 14),
+          Container(width: 1, height: 28, color: DashPalette.line),
+          const SizedBox(width: 14),
+          PopupMenuButton<String>(
+            tooltip: 'Account',
+            offset: const Offset(0, 44),
+            onSelected: (v) {
+              if (v == 'logout') _logout();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'logout', child: Text('Sign out')),
+            ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _avatar(36, DashPalette.greenSoft, DashPalette.greenDark),
+                if (showUserText) ...[
+                  const SizedBox(width: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 150),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_userName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: DashPalette.ink)),
+                        Text(_roleLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12, color: DashPalette.muted)),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 4),
+                const Icon(Icons.keyboard_arrow_down_rounded,
+                    size: 18, color: DashPalette.muted),
               ],
             ),
           ),
-        ),
-      );
-    }
+        ],
+      ),
+    );
+  }
 
-    // Phone / tablet: pages are shown directly; forms open full screen.
-    final pages = _buildPages();
+  // ───────────────────────── Compact (phones) ─────────────────────────
+
+  Widget _buildCompact() {
+    final isHome = _selectedIndex == 0;
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -169,11 +345,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         titleSpacing: 0,
         title: Row(
           children: [
-            _logo(32),
-            const SizedBox(width: 10),
+            if (isHome) ...[
+              _logo(32),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: Text(
-                AppConstants.companyNameShort,
+                isHome ? AppConstants.companyNameShort : _nav[_selectedIndex].label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -198,128 +376,359 @@ class _DashboardScreenState extends State<DashboardScreen> {
         width: 290,
         backgroundColor: DashPalette.sidebar,
         shape: const RoundedRectangleBorder(),
-        child: _sidebar(inDrawer: true),
+        child: _sidebar(inDrawer: true, collapsed: false),
       ),
-      body: pages[_selectedIndex],
-      floatingActionButton: _buildFAB(isDesktop: false),
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: KeyedSubtree(
+          key: ValueKey(_selectedIndex),
+          child: _pageFor(_selectedIndex),
+        ),
+      ),
+      floatingActionButton: _buildFAB(isPanel: false),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(top: BorderSide(color: DashPalette.line)),
         ),
         child: BottomNavigationBar(
-          currentIndex: _selectedIndex.clamp(0, 4), // Clamp to main tabs only
-          onTap: _select,
+          // Pages beyond the first 4 live under "More".
+          currentIndex: _selectedIndex < _bottomTabs ? _selectedIndex : _bottomTabs,
+          onTap: (i) {
+            if (i == _bottomTabs) {
+              _scaffoldKey.currentState?.openDrawer();
+            } else {
+              _select(i);
+            }
+          },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.white,
           elevation: 0,
           selectedItemColor: DashPalette.greenDark,
           unselectedItemColor: DashPalette.muted,
           selectedLabelStyle:
-              const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5),
+              const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
           unselectedLabelStyle:
               const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
           items: [
-            // Only show first 5 main tabs in bottom nav
-            for (var i = 0; i < 5 && i < _nav.length; i++)
+            for (var i = 0; i < _bottomTabs; i++)
               BottomNavigationBarItem(
                 icon: Icon(_nav[i].icon),
                 activeIcon: Icon(_nav[i].activeIcon),
                 label: _nav[i].label,
               ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.menu_rounded),
+              activeIcon: Icon(Icons.menu_rounded),
+              label: 'More',
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// The nested navigator that hosts the current page and anything opened from it.
-  Widget _contentNavigator() {
-    return Navigator(
-      key: _contentNav,
-      observers: [_observer],
-      onGenerateRoute: (settings) => MaterialPageRoute(
-        settings: settings,
-        builder: (_) => ValueListenableBuilder<int>(
-          valueListenable: _indexNotifier,
-          builder: (_, i, __) => _buildPages()[i],
+  // ───────────────────────── Sidebar / rail / drawer ─────────────────────────
+
+  Widget _sidebar({required bool inDrawer, required bool collapsed}) {
+    void go(int i) {
+      _select(i);
+      if (inDrawer) Navigator.pop(context);
+    }
+
+    final content = Padding(
+      padding: collapsed
+          ? const EdgeInsets.fromLTRB(10, 16, 10, 12)
+          : const EdgeInsets.fromLTRB(14, 20, 14, 14),
+      child: Column(
+        children: [
+          // Brand
+          if (collapsed)
+            Center(child: _logo(40))
+          else
+            Row(
+              children: [
+                _logo(38),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    AppConstants.companyNameShort,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          SizedBox(height: collapsed ? 18 : 20),
+
+          // Search (full sidebar only)
+          if (!collapsed) ...[
+            Container(
+              height: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.07),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.08)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.search_rounded,
+                      size: 18, color: Colors.white.withOpacity(0.75)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Search...',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14, color: Colors.white.withOpacity(0.75))),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Navigation (scrolls on short screens)
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment:
+                    collapsed ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+                children: [
+                  for (var s = 0; s < _sections.length; s++) ...[
+                    if (s > 0) SizedBox(height: collapsed ? 10 : 20),
+                    if (collapsed && s > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                            width: 24,
+                            height: 1,
+                            color: Colors.white.withOpacity(0.12)),
+                      )
+                    else if (!collapsed)
+                      _sectionLabel(_sections[s].title),
+                    for (final i in _sections[s].indexes)
+                      _navTile(
+                        icon: _selectedIndex == i ? _nav[i].activeIcon : _nav[i].icon,
+                        label: _nav[i].label,
+                        selected: _selectedIndex == i,
+                        collapsed: collapsed,
+                        onTap: () => go(i),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          collapsed ? _collapsedAccount() : _accountCard(),
+        ],
+      ),
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: DashPalette.sidebar,
+        borderRadius: inDrawer ? BorderRadius.zero : BorderRadius.circular(20),
+      ),
+      child: inDrawer ? SafeArea(child: content) : content,
+    );
+  }
+
+  Widget _accountCard() {
+    final user = AuthService.instance.currentUser;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: DashPalette.green.withOpacity(0.7), width: 1.4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              _avatar(30, DashPalette.green, Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _userName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      user?.branchName ?? user?.role.name ?? 'User',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFC3D3C9),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: _logout,
+            borderRadius: BorderRadius.circular(8),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Sign out',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600)),
+                  Icon(Icons.logout_rounded, size: 16, color: DashPalette.green),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _collapsedAccount() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: '$_userName • $_roleLabel',
+          child: _avatar(36, DashPalette.green, Colors.white),
+        ),
+        const SizedBox(height: 8),
+        Tooltip(
+          message: 'Sign out',
+          child: InkWell(
+            onTap: _logout,
+            borderRadius: BorderRadius.circular(10),
+            child: const SizedBox(
+              width: 44,
+              height: 40,
+              child: Icon(Icons.logout_rounded, size: 20, color: DashPalette.green),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Color(0xFFB3C6BA),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.5,
         ),
       ),
     );
   }
 
-  /// Desktop FAB slot: hidden while a form is open inside the content area.
-  Widget _fabSlot({required bool isDesktop}) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: _subOpen,
-      builder: (_, open, __) =>
-          open ? const SizedBox.shrink() : (_buildFAB(isDesktop: isDesktop) ?? const SizedBox.shrink()),
+  Widget _navTile({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required bool collapsed,
+    bool selected = false,
+  }) {
+    final fg = selected ? Colors.white : const Color(0xFFD3E0D8);
+    final bg = selected ? DashPalette.navActive : Colors.transparent;
+
+    final tile = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: collapsed
+            ? Container(
+                width: 48,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 21, color: fg),
+              )
+            : Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, size: 20, color: fg),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                          color: fg,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: collapsed ? Tooltip(message: label, child: tile) : tile,
     );
   }
 
-  // ───────────────────────── Desktop header ─────────────────────────
+  // ───────────────────────── Shared bits ─────────────────────────
 
-  Widget _desktopHeader() {
-    final userName = AuthService.instance.currentUser?.displayName ?? 'User';
-    final title = _selectedIndex == 0
-        ? '${dashGreeting()}, $userName'
-        : _nav[_selectedIndex].label;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: DashPalette.ink,
-              ),
-            ),
-          ),
-          _headerIcon(Icons.notifications_none_rounded, () {}),
-          const SizedBox(width: 10),
-          _headerIcon(Icons.bolt_rounded, () {
-            // Quick action: go to Purchases
-            _select(2);
-          }),
-          const SizedBox(width: 16),
-          Container(width: 1, height: 28, color: DashPalette.line),
-          const SizedBox(width: 16),
-          Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: DashPalette.greenSoft,
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-                userName.isNotEmpty ? userName[0].toUpperCase() : 'U',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: DashPalette.greenDark)),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(userName,
-                  style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: DashPalette.ink)),
-              Text(_getRoleDisplayName(AuthService.instance.currentUser?.role?.toString() ?? 'user'),
-                  style: const TextStyle(fontSize: 12, color: DashPalette.muted)),
-            ],
-          ),
-          const SizedBox(width: 6),
-          const Icon(Icons.keyboard_arrow_down_rounded,
-              size: 18, color: DashPalette.muted),
-        ],
+  Widget _avatar(double size, Color bg, Color fg) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+      child: Text(
+        _initial,
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: size * 0.4,
+          color: fg,
+        ),
       ),
     );
   }
@@ -339,264 +748,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-
-  // ───────────────────────── Sidebar ─────────────────────────
-
-  Widget _sidebar({required bool inDrawer}) {
-    final content = Padding(
-      padding: const EdgeInsets.fromLTRB(14, 20, 14, 14),
-      child: Column(
-        children: [
-          // Brand
-          Row(
-            children: [
-              _logo(38),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  AppConstants.companyNameShort,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Search
-          Container(
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.07),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.search_rounded,
-                    size: 18, color: Colors.white.withOpacity(0.75)),
-                const SizedBox(width: 8),
-                Text('Search...',
-                    style: TextStyle(
-                        fontSize: 14, color: Colors.white.withOpacity(0.75))),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sectionLabel('General'),
-                  for (var i = 0; i < 5; i++) // Dashboard, Farmers, Purchases, Inventory, Reports
-                    _navTile(
-                      icon: _selectedIndex == i ? _nav[i].activeIcon : _nav[i].icon,
-                      label: _nav[i].label,
-                      selected: _selectedIndex == i,
-                      onTap: () {
-                        _select(i);
-                        if (inDrawer) Navigator.pop(context);
-                      },
-                    ),
-                  const SizedBox(height: 24),
-                  // Only show Admin section for superAdmins
-                  if (AuthService.instance.isSuperAdmin) ...[
-                    _sectionLabel('Admin'),
-                    for (var i = 5; i < _nav.length; i++) // Admin items
-                      _navTile(
-                        icon: _selectedIndex == i ? _nav[i].activeIcon : _nav[i].icon,
-                        label: _nav[i].label,
-                        selected: _selectedIndex == i,
-                        onTap: () {
-                          _select(i);
-                          if (inDrawer) Navigator.pop(context);
-                        },
-                      ),
-                  ],
-                  // Settings for everyone
-                  if (!AuthService.instance.isSuperAdmin) ...[
-                    const SizedBox(height: 24),
-                    _sectionLabel('Settings'),
-                    _navTile(
-                      icon: _selectedIndex == 7 ? Icons.settings : Icons.settings_outlined,
-                      label: 'Settings',
-                      selected: _selectedIndex == 7,
-                      onTap: () {
-                        _select(7);
-                        if (inDrawer) Navigator.pop(context);
-                      },
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          // Account card (bottom)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: DashPalette.green.withOpacity(0.7), width: 1.4),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 30,
-                      height: 30,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: DashPalette.green,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        (AuthService.instance.currentUser?.displayName ?? 'U')[0].toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            AuthService.instance.currentUser?.displayName ?? 'User',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            AuthService.instance.currentUser?.branchName ?? 
-                                AuthService.instance.currentUser?.role.name ?? 'User',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFFC3D3C9),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                InkWell(
-                  onTap: _logout,
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Sign out',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600)),
-                        Icon(Icons.logout_rounded,
-                            size: 16, color: DashPalette.green),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-
-    return Container(
-      decoration: BoxDecoration(
-        color: DashPalette.sidebar,
-        borderRadius: inDrawer ? BorderRadius.zero : BorderRadius.circular(20),
-      ),
-      child: inDrawer ? SafeArea(child: content) : content,
-    );
-  }
-
-  Widget _sectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFFB3C6BA),
-          fontSize: 13.5,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _navTile({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool selected = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-            decoration: BoxDecoration(
-              color: selected ? DashPalette.navActive : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                Icon(icon,
-                    size: 20,
-                    color: selected ? Colors.white : const Color(0xFFD3E0D8)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                      color: selected ? Colors.white : const Color(0xFFD3E0D8),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────── Shared bits ─────────────────────────
 
   Widget _logo(double size) {
     return Container(
@@ -622,20 +773,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// Opens an add form: inside the content panel on desktop (sidebar stays),
-  /// full screen on phones.
-  void _openAddScreen(Widget screen, {required bool isDesktop}) {
+  /// Opens an add form: inside the content panel on tablet/desktop
+  /// (sidebar stays), full screen on phones.
+  void _openAddScreen(Widget screen, {required bool isPanel}) {
     final route = MaterialPageRoute(builder: (_) => screen);
-    if (isDesktop && _contentNav.currentState != null) {
+    if (isPanel && _contentNav.currentState != null) {
       _contentNav.currentState!.push(route);
     } else {
       Navigator.of(context).push(route);
     }
   }
 
-  Widget? _buildFAB({required bool isDesktop}) {
+  Widget? _buildFAB({required bool isPanel}) {
     Widget fab(Widget screen) => FloatingActionButton(
-          onPressed: () => _openAddScreen(screen, isDesktop: isDesktop),
+          onPressed: () => _openAddScreen(screen, isPanel: isPanel),
           backgroundColor: DashPalette.ink,
           elevation: 2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
