@@ -42,7 +42,9 @@ class _Tx {
   final double amount;
   final DateTime date;
   final bool voided;
-  _Tx(this.farmer, this.kg, this.amount, this.date, this.voided);
+  final String branchId;
+  final String branchName;
+  _Tx(this.farmer, this.kg, this.amount, this.date, this.voided, this.branchId, this.branchName);
 }
 
 class _Data {
@@ -57,6 +59,17 @@ class _Data {
   double advOutstanding = 0;
   int advCount = 0;
   double allRevenue = 0;
+  Map<String, _BranchSales> branchSales = {}; // NEW: branch-wise sales
+}
+
+// NEW: Branch sales data
+class _BranchSales {
+  final String branchId;
+  final String branchName;
+  double revenue = 0;
+  double kg = 0;
+  int count = 0;
+  _BranchSales(this.branchId, this.branchName);
 }
 
 /// Modern responsive dashboard home.
@@ -117,6 +130,8 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
           _num(m['netPayment']),
           date,
           (m['status'] ?? 'active') == 'voided',
+          (m['branch_id'] ?? '').toString(),
+          (m['branch_name'] ?? 'Unknown Branch').toString(),
         ));
       }
     }
@@ -137,6 +152,17 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
         d.kg += t.kg;
         d.revenue += t.amount;
         byFarmer[t.farmer] = (byFarmer[t.farmer] ?? 0) + t.kg;
+        
+        // Track branch-wise sales
+        if (t.branchId.isNotEmpty) {
+          final branch = d.branchSales.putIfAbsent(
+            t.branchId,
+            () => _BranchSales(t.branchId, t.branchName),
+          );
+          branch.revenue += t.amount;
+          branch.kg += t.kg;
+          branch.count++;
+        }
       }
     }
 

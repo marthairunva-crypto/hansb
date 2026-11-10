@@ -629,6 +629,11 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                         child: _iconAction(Icons.block_rounded, 'Void',
                             DashPalette.red, () => _confirmVoid(p)),
                       ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: _iconAction(Icons.delete_forever_rounded, 'Delete',
+                            const Color(0xFF9D2235), () => _confirmDelete(p)),
+                      ),
                     ],
                   ),
                 ),
@@ -737,6 +742,9 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
                     const Spacer(),
                     _textAction(Icons.block_rounded, 'Void', DashPalette.red,
                         () => _confirmVoid(p)),
+                    const SizedBox(width: 8),
+                    _textAction(Icons.delete_forever_rounded, 'Delete', 
+                        const Color(0xFF9D2235), () => _confirmDelete(p)),
                   ],
                 ),
               ],
@@ -1137,6 +1145,180 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       _toast('Purchase voided and advances restored');
     } catch (e) {
       _toast('Error voiding purchase: $e', color: DashPalette.red);
+    }
+  }
+
+  // ───────────────────────── Delete flow ─────────────────────────
+
+  void _confirmDelete(_Purchase p) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFF9D2235).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: const Icon(Icons.delete_forever_rounded,
+                  color: Color(0xFF9D2235)),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Delete purchase?',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: DashPalette.ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Permanently delete the UGX ${_money(p.net)} purchase for ${p.farmerName}?',
+              style: const TextStyle(
+                fontSize: 14.5,
+                color: DashPalette.muted,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3F3),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFCDD2)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.warning_rounded, 
+                      color: Color(0xFF9D2235), size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This action cannot be undone. All data will be permanently removed.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF9D2235),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deletePurchase(p.id, p.farmerId, p.advance);
+            },
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF9D2235)),
+            child: const Text('Delete permanently'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deletePurchase(
+      String purchaseId, String farmerId, double advanceAmount) async {
+    try {
+      final purchaseDoc = await FirebaseFirestore.instance
+          .collection(AppConstants.purchasesCollection)
+          .doc(purchaseId)
+          .get();
+
+      if (!purchaseDoc.exists) {
+        throw Exception('Purchase not found');
+      }
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // Restore advances if any were deducted (same logic as void)
+      if (advanceAmount > 0 && farmerId.isNotEmpty) {
+        final advancesSnapshot = await FirebaseFirestore.instance
+            .collection(AppConstants.advancesCollection)
+            .where('farmerId', isEqualTo: farmerId)
+            .get();
+
+        double remainingToRestore = advanceAmount;
+
+        final recoveredAdvances = advancesSnapshot.docs.where((doc) {
+          final data = doc.data();
+          return data['status'] == 'fully_recovered' ||
+              data['status'] == 'active';
+        }).toList();
+
+        recoveredAdvances.sort((a, b) {
+          final aTime = a.data()['createdAt'] as Timestamp?;
+          final bTime = b.data()['createdAt'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+
+        for (var advDoc in recoveredAdvances) {
+          if (remainingToRestore <= 0) break;
+
+          final advData = advDoc.data();
+          final originalAmount = _toDouble(advData['amount']);
+          final currentRemaining = _toDouble(advData['remainingAmount']);
+          final canRestore = originalAmount - currentRemaining;
+
+          if (canRestore > 0) {
+            final restoreAmount = canRestore <= remainingToRestore
+                ? canRestore
+                : remainingToRestore;
+            final newRemaining = currentRemaining + restoreAmount;
+
+            batch.update(advDoc.reference, {
+              'remainingAmount': newRemaining,
+              'status': 'active',
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+
+            remainingToRestore -= restoreAmount;
+          }
+        }
+
+        final farmerRef = FirebaseFirestore.instance
+            .collection(AppConstants.farmersCollection)
+            .doc(farmerId);
+        batch.update(farmerRef, {
+          'totalAdvances': FieldValue.increment(advanceAmount),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Permanently delete the purchase document
+      final purchaseRef = FirebaseFirestore.instance
+          .collection(AppConstants.purchasesCollection)
+          .doc(purchaseId);
+      batch.delete(purchaseRef);
+
+      await batch.commit();
+      _toast('Purchase permanently deleted', color: const Color(0xFF9D2235));
+    } catch (e) {
+      _toast('Error deleting purchase: $e', color: DashPalette.red);
     }
   }
 }
