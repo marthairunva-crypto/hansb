@@ -262,7 +262,7 @@ class _BranchStatsScreenState extends State<BranchStatsScreen> {
       );
 
       // Farmers list section
-      final farmersList = s['farmersList'] as List;
+      final farmersList = (s['farmersList'] as List?) ?? [];
       final farmersListSection = farmersList.isEmpty
           ? const SizedBox.shrink()
           : _farmersListSection(farmersList);
