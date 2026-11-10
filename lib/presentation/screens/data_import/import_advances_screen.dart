@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'package:csv/csv.dart';
+import 'package:excel/excel.dart';
 
 class ImportAdvancesScreen extends StatefulWidget {
   const ImportAdvancesScreen({Key? key}) : super(key: key);
@@ -86,7 +87,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Your CSV file should have the following columns (in order):',
+              'Your file should have the following columns (in order):',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
@@ -236,7 +237,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Upload CSV File',
+              'Upload File',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -284,7 +285,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Supported format: CSV (.csv)',
+                      'Supported formats: Excel (.xlsx) or CSV (.csv)',
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey[600],
@@ -464,13 +465,19 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['csv'],
+        allowedExtensions: ['csv', 'xlsx'],
       );
 
       if (result != null && result.files.single.bytes != null) {
         final bytes = result.files.single.bytes!;
-        final csvString = utf8.decode(bytes);
-        await _parseCSV(csvString);
+        final extension = result.files.single.extension?.toLowerCase();
+        
+        if (extension == 'xlsx') {
+          await _parseExcel(bytes);
+        } else {
+          final csvString = utf8.decode(bytes);
+          await _parseCSV(csvString);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -478,6 +485,108 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           SnackBar(content: Text('Error picking file: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _parseExcel(List<int> bytes) async {
+    setState(() {
+      _parsedData = [];
+      _errors = [];
+      _importedCount = 0;
+    });
+
+    try {
+      final excel = Excel.decodeBytes(bytes);
+      
+      // Get first sheet
+      final sheet = excel.tables[excel.tables.keys.first];
+      if (sheet == null) {
+        setState(() {
+          _errors.add('No data found in Excel file');
+        });
+        return;
+      }
+
+      // Skip header row (first row)
+      final dataRows = sheet.rows.skip(1);
+
+      for (var i = 0; i < dataRows.length; i++) {
+        final row = dataRows.elementAt(i);
+        
+        if (row.isEmpty || row.length < 3) {
+          _errors.add('Row ${i + 2}: Not enough columns');
+          continue;
+        }
+
+        try {
+          final farmerName = row[0]?.value?.toString().trim() ?? '';
+          final phone = row.length > 1 ? (row[1]?.value?.toString().trim() ?? '') : '';
+          final amountStr = row.length > 2 ? (row[2]?.value?.toString().trim() ?? '0') : '0';
+          final dateValue = row.length > 3 ? row[3]?.value : null;
+          final notes = row.length > 4 ? (row[4]?.value?.toString().trim() ?? '') : '';
+
+          if (farmerName.isEmpty) {
+            continue; // Skip empty rows
+          }
+
+          // Parse amount
+          double amount = 0;
+          try {
+            amount = double.parse(amountStr.replaceAll(',', ''));
+          } catch (e) {
+            _errors.add('Row ${i + 2}: Invalid amount "$amountStr"');
+            continue;
+          }
+
+          // Parse date
+          DateTime? date;
+          if (dateValue != null) {
+            try {
+              if (dateValue is DateTime) {
+                date = dateValue;
+              } else if (dateValue is DateCellValue) {
+                date = DateTime(
+                  dateValue.year,
+                  dateValue.month,
+                  dateValue.day,
+                );
+              } else {
+                final dateStr = dateValue.toString();
+                if (dateStr.contains('-')) {
+                  date = DateTime.parse(dateStr);
+                } else if (dateStr.contains('/')) {
+                  final parts = dateStr.split('/');
+                  if (parts.length == 3) {
+                    date = DateTime(
+                      int.parse(parts[2]),
+                      int.parse(parts[1]),
+                      int.parse(parts[0]),
+                    );
+                  }
+                }
+              }
+            } catch (e) {
+              _errors.add('Row ${i + 2}: Invalid date format');
+            }
+          }
+
+          _parsedData.add({
+            'farmerName': farmerName,
+            'phone': phone.isEmpty ? null : phone,
+            'amount': amount,
+            'date': date,
+            'notes': notes.isEmpty ? null : notes,
+          });
+        } catch (e) {
+          _errors.add('Row ${i + 2}: Error parsing - $e');
+        }
+      }
+
+      setState(() {});
+    } catch (e) {
+      setState(() {
+        _errors.add('Error parsing Excel: $e');
+      });
     }
   }
 
