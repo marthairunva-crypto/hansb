@@ -599,6 +599,33 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
 
   Widget _hero(_Data d) {
     final amount = _hide ? 'UGX ••••••' : CurrencyFormatter.formatUGX(d.revenue);
+    final user = AuthService.instance.currentUser;
+    final branchName = user?.branchName ?? '';
+    final isSuperAdmin = user?.isSuperAdmin ?? false;
+    
+    // Determine scope label
+    String scopeLabel;
+    Color scopeColor;
+    IconData scopeIcon;
+    String description;
+    
+    if (isSuperAdmin) {
+      scopeLabel = 'All Branches';
+      scopeColor = DashPalette.blue;
+      scopeIcon = Icons.business_rounded;
+      description = 'Company-wide overview of purchases, farmers and payments.';
+    } else if (branchName.isNotEmpty) {
+      scopeLabel = branchName;
+      scopeColor = DashPalette.green;
+      scopeIcon = Icons.store_rounded;
+      description = 'Branch overview of your purchases, farmers and payments.';
+    } else {
+      scopeLabel = 'Your Branch';
+      scopeColor = DashPalette.green;
+      scopeIcon = Icons.store_rounded;
+      description = 'Branch overview of your purchases, farmers and payments.';
+    }
+    
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -614,15 +641,51 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Coffee Business, Every Day',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: DashPalette.ink)),
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Coffee Business, Every Day',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: DashPalette.ink)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: scopeColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: scopeColor,
+                    width: 1.2,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      scopeIcon,
+                      size: 14,
+                      color: scopeColor,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      scopeLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: scopeColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
-          const Text(
-            'A complete overview of your purchases, farmers and payments.',
-            style: TextStyle(fontSize: 13, color: DashPalette.muted),
+          Text(
+            description,
+            style: const TextStyle(fontSize: 13, color: DashPalette.muted),
           ),
           const SizedBox(height: 18),
           Row(
