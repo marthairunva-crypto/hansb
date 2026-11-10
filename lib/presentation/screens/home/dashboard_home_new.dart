@@ -280,7 +280,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
           ],
         );
         if (fit) {
-          return Padding(
+          return SingleChildScrollView(
             padding: EdgeInsets.all(pad),
             child: Column(
               children: [
@@ -288,9 +288,9 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
                 const SizedBox(height: 14),
                 SizedBox(height: 206, child: rowA),
                 const SizedBox(height: 16),
-                Expanded(child: rowB),
+                rowB,
                 const SizedBox(height: 16),
-                SizedBox(height: 240, child: rowC),
+                rowC,
                 const SizedBox(height: 16),
                 _footer(),
               ],
@@ -810,7 +810,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
   Widget _monthlyCard(_Data d, bool narrow, {bool fill = false}) {
     final chart = SizedBox(
       width: double.infinity,
-      height: fill ? null : (narrow ? 220 : 270),
+      height: narrow ? 220 : 270,
       child: CustomPaint(
         painter: _BarsPainter(d.monthly, DateTime.now().month - 1),
       ),
@@ -837,7 +837,7 @@ class _DashboardHomeNewState extends State<DashboardHomeNew> {
             ],
           ),
           const SizedBox(height: 14),
-          if (fill) Expanded(child: chart) else chart,
+          chart,
         ],
       ),
     );
