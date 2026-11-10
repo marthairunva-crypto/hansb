@@ -396,8 +396,8 @@ class _FarmersScreenState extends State<FarmersScreen> {
 
   // ───────────────────────── Table ─────────────────────────
 
-  static const _flex = [1, 5, 3, 4, 3, 2, 2, 3];
-  static const _minTableWidth = 940.0;
+  static const _flex = [1, 5, 3, 4, 3, 2, 2, 2];
+  static const _minTableWidth = 860.0;
 
   static const _th = TextStyle(
       fontSize: 13.5, fontWeight: FontWeight.w800, color: DashPalette.ink);
@@ -629,18 +629,24 @@ class _FarmersScreenState extends State<FarmersScreen> {
             ? Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _iconAction(Icons.call_rounded, DashPalette.blue, 'Call',
-                      () => SmsService.makeCall(
-                          phoneNumber: f.phone, context: context)),
-                  const SizedBox(width: 8),
-                  _iconAction(Icons.sms_rounded, DashPalette.greenDark, 'SMS',
-                      () => SmsService.sendSMS(
-                          phoneNumber: f.phone, context: context)),
-                  const SizedBox(width: 8),
-                  _iconAction(Icons.chat_rounded, const Color(0xFF1FA855),
-                      'WhatsApp',
-                      () => SmsService.openWhatsApp(
-                          phoneNumber: f.phone, context: context)),
+                  Flexible(
+                    child: _iconAction(Icons.call_rounded, DashPalette.blue, 'Call',
+                        () => SmsService.makeCall(
+                            phoneNumber: f.phone, context: context)),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: _iconAction(Icons.sms_rounded, DashPalette.greenDark, 'SMS',
+                        () => SmsService.sendSMS(
+                            phoneNumber: f.phone, context: context)),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: _iconAction(Icons.chat_rounded, const Color(0xFF1FA855),
+                        'WhatsApp',
+                        () => SmsService.openWhatsApp(
+                            phoneNumber: f.phone, context: context)),
+                  ),
                 ],
               )
             : const Text('—',
