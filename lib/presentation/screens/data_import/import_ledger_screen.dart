@@ -252,14 +252,14 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
                   items: branches.map((doc) {
                     return DropdownMenuItem(
                       value: doc.id,
-                      child: Text((doc['name'] ?? 'Unknown').toString()),
+                      child: Text((doc['branch_name'] ?? 'Unknown').toString()),
                     );
                   }).toList(),
                   onChanged: (value) async {
                     final doc = branches.firstWhere((d) => d.id == value);
                     setState(() {
                       _selectedBranchId = value;
-                      _selectedBranchName = (doc['name'] ?? '').toString();
+                      _selectedBranchName = (doc['branch_name'] ?? '').toString();
                       _importedCount = 0;
                       _duplicateCount = 0;
                     });
