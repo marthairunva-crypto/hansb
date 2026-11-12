@@ -468,9 +468,10 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
         allowedExtensions: ['csv', 'xlsx'],
       );
 
-      if (files != null && files.isNotEmpty && files.first.bytes != null) {
-        final bytes = files.first.bytes!;
-        final extension = files.first.extension?.toLowerCase();
+      if (files != null && files.isNotEmpty) {
+        final file = files.first;
+        final bytes = await file.readAsBytes();
+        final extension = file.extension?.toLowerCase();
         
         if (extension == 'xlsx') {
           await _parseExcel(bytes);
@@ -610,7 +611,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     });
 
     try {
-      final converter = CsvToListConverter();
+      final converter = const CsvToListConverter();
       final rows = converter.convert(csvString);
       
       // Skip header row if it exists

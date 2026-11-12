@@ -723,12 +723,9 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
       if (files == null || files.isEmpty) return;
 
       final file = files.first;
-      if (file.bytes == null) {
-        setState(() => _errors = ['Could not read the file contents.']);
-        return;
-      }
+      final bytes = await file.readAsBytes();
 
-      _fileBytes = file.bytes!;
+      _fileBytes = bytes;
       _fileName = file.name;
       await _loadFarmers();
       _parseLedger();
