@@ -139,7 +139,6 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
         );
 
         return SingleChildScrollView(
-          controller: _scroll,
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
           child: Center(
             child: ConstrainedBox(
