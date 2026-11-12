@@ -1527,7 +1527,7 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
     final ready = _rows.where(_isReady).toList();
     if (ready.isEmpty) return;
 
-    final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUser = AuthService.instance.currentUser;
     if (currentUser == null) {
       setState(() => _errors = ['Not logged in']);
       _showSnack('You are not signed in. Please sign out and sign in again.');
