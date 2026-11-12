@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'package:csv/csv.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' hide Border;
 
 class ImportAdvancesScreen extends StatefulWidget {
   const ImportAdvancesScreen({Key? key}) : super(key: key);
@@ -463,9 +463,10 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
 
   Future<void> _pickFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv', 'xlsx'],
+        withData: true,
       );
 
       if (result != null && result.files.single.bytes != null) {
@@ -542,14 +543,26 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           DateTime? date;
           if (dateValue != null) {
             try {
-              if (dateValue is DateTime) {
-                date = dateValue;
-              } else if (dateValue is DateCellValue) {
+              if (dateValue is DateCellValue) {
                 date = DateTime(
                   dateValue.year,
                   dateValue.month,
                   dateValue.day,
                 );
+              } else if (dateValue is TextCellValue) {
+                final dateStr = dateValue.value.toString();
+                if (dateStr.contains('-')) {
+                  date = DateTime.parse(dateStr);
+                } else if (dateStr.contains('/')) {
+                  final parts = dateStr.split('/');
+                  if (parts.length == 3) {
+                    date = DateTime(
+                      int.parse(parts[2]),
+                      int.parse(parts[1]),
+                      int.parse(parts[0]),
+                    );
+                  }
+                }
               } else {
                 final dateStr = dateValue.toString();
                 if (dateStr.contains('-')) {
@@ -598,7 +611,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     });
 
     try {
-      final rows = const CsvToListConverter().convert(csvString);
+      final rows = CsvToListConverter().convert(csvString);
       
       // Skip header row if it exists
       final dataRows = rows.length > 0 && rows[0][0].toString().toLowerCase().contains('name')
