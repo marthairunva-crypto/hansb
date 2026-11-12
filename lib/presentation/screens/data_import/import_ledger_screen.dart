@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 // The excel package exports its own Border / BorderStyle / TextSpan, which
 // clash with Flutter's, so they are hidden here.
 import 'package:excel/excel.dart' hide Border, BorderStyle, TextSpan;
+import '../../../core/services/auth_service.dart';
+import '../../../core/constants/app_constants.dart';
 
 /// Importer for the "ADVANCE LEDGER" Excel layout:
 ///
@@ -1163,7 +1164,7 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
   Future<void> _loadFarmers() async {
     if (_selectedBranchId == null) return;
     final snap = await _firestore
-        .collection('farmers')
+        .collection(AppConstants.farmersCollection)
         .where('branchId', isEqualTo: _selectedBranchId)
         .get();
     final list = snap.docs
@@ -1549,7 +1550,7 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
           '$farmerId|${amount.round()}|${keyFmt.format(date)}';
 
       final existing = await _firestore
-          .collection('advances')
+          .collection(AppConstants.advancesCollection)
           .where('branchId', isEqualTo: _selectedBranchId)
           .get();
       final existingKeys = <String>{};
@@ -1589,7 +1590,7 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
           final farmerId = _mapping[r.ledgerName]!;
           final farmer = _farmers.firstWhere((f) => f.id == farmerId);
           final balance = (r.amount - r.recovered).clamp(0, double.infinity);
-          final ref = _firestore.collection('advances').doc();
+          final ref = _firestore.collection(AppConstants.advancesCollection).doc();
 
           var notes = 'Imported from ledger';
           if (r.recovered > 0) {
@@ -1617,7 +1618,7 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
 
         balanceByFarmer.forEach((farmerId, add) {
           if (add == 0) return;
-          batch.update(_firestore.collection('farmers').doc(farmerId), {
+          batch.update(_firestore.collection(AppConstants.farmersCollection).doc(farmerId), {
             'advanceBalance': FieldValue.increment(add),
             'updatedAt': FieldValue.serverTimestamp(),
           });

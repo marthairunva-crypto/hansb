@@ -7,6 +7,8 @@ import 'package:csv/csv.dart';
 // excel exports its own Border / BorderStyle / TextSpan, which clash with Flutter's.
 import 'package:excel/excel.dart' hide Border, BorderStyle, TextSpan;
 import '../../../core/services/auth_service.dart';
+import '../../../core/constants/app_constants.dart';
+import '../../../core/services/auth_service.dart';
 
 class ImportAdvancesScreen extends StatefulWidget {
   const ImportAdvancesScreen({Key? key}) : super(key: key);
@@ -1294,7 +1296,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     try {
       // Get all farmers from this branch
       final farmersSnapshot = await _firestore
-          .collection('farmers')
+          .collection(AppConstants.farmersCollection)
           .where('branchId', isEqualTo: _selectedBranchId)
           .get();
 
@@ -1319,7 +1321,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           }
 
           // Create the farmer in this branch
-          final newFarmer = _firestore.collection('farmers').doc();
+          final newFarmer = _firestore.collection(AppConstants.farmersCollection).doc();
           await newFarmer.set({
             'name': _cleanName(row['farmerName'].toString()),
             'phone': row['phone'] ?? '',
@@ -1342,7 +1344,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
             ((row['balance'] ?? row['amount']) as num).toDouble();
 
         // Create advance record
-        await _firestore.collection('advances').add({
+        await _firestore.collection(AppConstants.advancesCollection).add({
           'farmerId': farmerId,
           'farmerName': row['farmerName'],
           'branchId': _selectedBranchId,
@@ -1358,7 +1360,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
         });
 
         // Update farmer's advance balance
-        final farmerDoc = _firestore.collection('farmers').doc(farmerId);
+        final farmerDoc = _firestore.collection(AppConstants.farmersCollection).doc(farmerId);
         await _firestore.runTransaction((transaction) async {
           final farmerSnapshot = await transaction.get(farmerDoc);
           if (farmerSnapshot.exists) {
