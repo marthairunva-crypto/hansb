@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/services/sms_service.dart';
+import '../../../core/services/company_service.dart';
 import '../home/dashboard_home_new.dart' show DashPalette;
 
-class HelpSupportScreen extends StatelessWidget {
+class HelpSupportScreen extends StatefulWidget {
   const HelpSupportScreen({Key? key}) : super(key: key);
+
+  @override
+  State<HelpSupportScreen> createState() => _HelpSupportScreenState();
+}
+
+class _HelpSupportScreenState extends State<HelpSupportScreen> {
 
   static const _wideBreakpoint = 900.0;
 
@@ -13,6 +20,23 @@ class HelpSupportScreen extends StatelessWidget {
   static const _phone1 = '0778474686';
   static const _phone2 = '0795551296';
   static const _email = 'info@infinitech.co.ug';
+
+  CompanyInfo? _companyInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCompanyInfo();
+  }
+
+  Future<void> _loadCompanyInfo() async {
+    final info = await CompanyService.instance.getCompanyInfo();
+    if (mounted) {
+      setState(() {
+        _companyInfo = info;
+      });
+    }
+  }
 
   static const _quickHelp = <_Help>[
     _Help(
@@ -423,7 +447,7 @@ class HelpSupportScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              '© 2026 ${AppConstants.companyName}\nAll Rights Reserved',
+              '© 2026 ${_companyInfo?.name ?? AppConstants.companyName}\nAll Rights Reserved',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 12.5,

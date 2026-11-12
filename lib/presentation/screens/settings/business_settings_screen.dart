@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../home/dashboard_home_new.dart' show DashPalette;
+import '../../../core/services/company_service.dart';
 
 class BusinessSettingsScreen extends StatefulWidget {
   const BusinessSettingsScreen({Key? key}) : super(key: key);
@@ -122,6 +123,9 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         final docRef = await _firestore.collection('business_settings').add(data);
         _businessDocId = docRef.id;
       }
+      
+      // Clear company service cache so new data is loaded
+      CompanyService.instance.clearCache();
       
       _showSnackBar('Business settings saved successfully');
       Navigator.pop(context);

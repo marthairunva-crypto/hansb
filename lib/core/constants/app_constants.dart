@@ -1,6 +1,9 @@
 /// Application-wide constants for HANS. B Trading Company Limited Coffee Management System
+/// 
+/// NOTE: Company information (name, address, phones) can be dynamically loaded from
+/// Firestore using CompanyService. The values here are defaults/fallbacks.
 class AppConstants {
-  // Company Information
+  // Company Information (defaults - see CompanyService for dynamic loading)
   static const String companyName = 'HANS. B TRADING COMPANY LIMITED';
   static const String companyNameShort = 'HANS. B TRADING CO.';
   static const String companyDivision = 'COFFEE FACTORY';
