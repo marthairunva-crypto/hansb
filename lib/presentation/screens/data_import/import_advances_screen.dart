@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
-import 'package:csv/csv.dart' show CsvToListConverter;
+import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' hide Border;
 
 class ImportAdvancesScreen extends StatefulWidget {
@@ -196,7 +196,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
                 }
 
                 final branches = snapshot.data!.docs;
-                
+
                 return DropdownButtonFormField<String>(
                   value: _selectedBranchId,
                   decoration: const InputDecoration(
@@ -208,16 +208,19 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
                   ),
                   hint: const Text('Choose a branch'),
                   items: branches.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
                     return DropdownMenuItem(
                       value: doc.id,
-                      child: Text(doc['name'] ?? 'Unknown'),
+                      child: Text((data['branch_name'] ?? 'Unknown').toString()),
                     );
                   }).toList(),
                   onChanged: (value) {
+                    final selected =
+                        branches.firstWhere((doc) => doc.id == value);
+                    final data = selected.data() as Map<String, dynamic>;
                     setState(() {
                       _selectedBranchId = value;
-                      _selectedBranchName = branches
-                          .firstWhere((doc) => doc.id == value)['name'];
+                      _selectedBranchName = (data['branch_name'] ?? '').toString();
                     });
                   },
                 );
@@ -274,7 +277,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
                     Text(
                       _selectedBranchId == null
                           ? 'Select a branch first'
-                          : 'Click to select CSV file',
+                          : 'Click to select CSV or Excel file',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -461,6 +464,10 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // File picking & parsing
+  // ---------------------------------------------------------------------------
+
   Future<void> _pickFile() async {
     try {
       final files = await FilePicker.pickFiles(
@@ -472,11 +479,11 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
         final file = files.first;
         final bytes = await file.readAsBytes();
         final extension = file.extension?.toLowerCase();
-        
+
         if (extension == 'xlsx') {
           await _parseExcel(bytes);
         } else {
-          final csvString = utf8.decode(bytes);
+          final csvString = utf8.decode(bytes, allowMalformed: true);
           await _parseCSV(csvString);
         }
       }
@@ -489,6 +496,35 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     }
   }
 
+  /// Safely converts an Excel cell to plain text.
+  String _cellText(Data? cell) {
+    final v = cell?.value;
+    if (v == null) return '';
+    if (v is TextCellValue) return v.value.toString();
+    if (v is IntCellValue) return v.value.toString();
+    if (v is DoubleCellValue) return v.value.toString();
+    return v.toString();
+  }
+
+  /// Parses a date string in yyyy-MM-dd or dd/MM/yyyy format.
+  DateTime? _parseDateString(String dateStr) {
+    final s = dateStr.trim();
+    if (s.isEmpty) return null;
+    if (s.contains('-')) {
+      return DateTime.parse(s);
+    } else if (s.contains('/')) {
+      final parts = s.split('/');
+      if (parts.length == 3) {
+        return DateTime(
+          int.parse(parts[2]),
+          int.parse(parts[1]),
+          int.parse(parts[0]),
+        );
+      }
+    }
+    return null;
+  }
+
   Future<void> _parseExcel(List<int> bytes) async {
     setState(() {
       _parsedData = [];
@@ -498,7 +534,14 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
 
     try {
       final excel = Excel.decodeBytes(bytes);
-      
+
+      if (excel.tables.isEmpty) {
+        setState(() {
+          _errors.add('No data found in Excel file');
+        });
+        return;
+      }
+
       // Get first sheet
       final sheet = excel.tables[excel.tables.keys.first];
       if (sheet == null) {
@@ -509,26 +552,28 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
       }
 
       // Skip header row (first row)
-      final dataRows = sheet.rows.skip(1);
+      final dataRows = sheet.rows.skip(1).toList();
 
       for (var i = 0; i < dataRows.length; i++) {
-        final row = dataRows.elementAt(i);
-        
-        if (row.isEmpty || row.length < 3) {
-          _errors.add('Row ${i + 2}: Not enough columns');
-          continue;
-        }
+        final row = dataRows[i];
+
+        if (row.isEmpty) continue;
 
         try {
-          final farmerName = row[0]?.value?.toString().trim() ?? '';
-          final phone = row.length > 1 ? (row[1]?.value?.toString().trim() ?? '') : '';
-          final amountStr = row.length > 2 ? (row[2]?.value?.toString().trim() ?? '0') : '0';
-          final dateValue = row.length > 3 ? row[3]?.value : null;
-          final notes = row.length > 4 ? (row[4]?.value?.toString().trim() ?? '') : '';
-
+          final farmerName = _cellText(row[0]).trim();
           if (farmerName.isEmpty) {
             continue; // Skip empty rows
           }
+
+          if (row.length < 3) {
+            _errors.add('Row ${i + 2}: Not enough columns');
+            continue;
+          }
+
+          final phone = row.length > 1 ? _cellText(row[1]).trim() : '';
+          final amountStr = row.length > 2 ? _cellText(row[2]).trim() : '0';
+          final dateValue = row.length > 3 ? row[3]?.value : null;
+          final notes = row.length > 4 ? _cellText(row[4]).trim() : '';
 
           // Parse amount
           double amount = 0;
@@ -549,34 +594,16 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
                   dateValue.month,
                   dateValue.day,
                 );
+              } else if (dateValue is DateTimeCellValue) {
+                date = DateTime(
+                  dateValue.year,
+                  dateValue.month,
+                  dateValue.day,
+                );
               } else if (dateValue is TextCellValue) {
-                final dateStr = dateValue.value.toString();
-                if (dateStr.contains('-')) {
-                  date = DateTime.parse(dateStr);
-                } else if (dateStr.contains('/')) {
-                  final parts = dateStr.split('/');
-                  if (parts.length == 3) {
-                    date = DateTime(
-                      int.parse(parts[2]),
-                      int.parse(parts[1]),
-                      int.parse(parts[0]),
-                    );
-                  }
-                }
+                date = _parseDateString(dateValue.value.toString());
               } else {
-                final dateStr = dateValue.toString();
-                if (dateStr.contains('-')) {
-                  date = DateTime.parse(dateStr);
-                } else if (dateStr.contains('/')) {
-                  final parts = dateStr.split('/');
-                  if (parts.length == 3) {
-                    date = DateTime(
-                      int.parse(parts[2]),
-                      int.parse(parts[1]),
-                      int.parse(parts[0]),
-                    );
-                  }
-                }
+                date = _parseDateString(dateValue.toString());
               }
             } catch (e) {
               _errors.add('Row ${i + 2}: Invalid date format');
@@ -611,24 +638,33 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     });
 
     try {
-      final converter = CsvToListConverter();
-      final rows = converter.convert(csvString);
-      
+      // Works with the current csv package API (csv.decode)
+      final List<List<dynamic>> rows = csv.decode(csvString);
+
       // Skip header row if it exists
-      final dataRows = rows.length > 0 && rows[0][0].toString().toLowerCase().contains('name')
-          ? rows.skip(1)
-          : rows;
+      final hasHeader = rows.isNotEmpty &&
+          rows[0].isNotEmpty &&
+          rows[0][0].toString().toLowerCase().contains('name');
+      final dataRows = (hasHeader ? rows.skip(1) : rows).toList();
+      final rowOffset = hasHeader ? 2 : 1;
 
       for (var i = 0; i < dataRows.length; i++) {
-        final row = dataRows.elementAt(i);
-        
+        final row = dataRows[i];
+
+        // Skip completely empty rows
+        if (row.isEmpty || row.every((c) => c.toString().trim().isEmpty)) {
+          continue;
+        }
+
         if (row.length < 3) {
-          _errors.add('Row ${i + 1}: Not enough columns');
+          _errors.add('Row ${i + rowOffset}: Not enough columns');
           continue;
         }
 
         try {
           final farmerName = row[0].toString().trim();
+          if (farmerName.isEmpty) continue;
+
           final phone = row.length > 1 ? row[1].toString().trim() : '';
           final amountStr = row.length > 2 ? row[2].toString().trim() : '0';
           final dateStr = row.length > 3 ? row[3].toString().trim() : '';
@@ -639,7 +675,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           try {
             amount = double.parse(amountStr.replaceAll(',', ''));
           } catch (e) {
-            _errors.add('Row ${i + 1}: Invalid amount "$amountStr"');
+            _errors.add('Row ${i + rowOffset}: Invalid amount "$amountStr"');
             continue;
           }
 
@@ -647,21 +683,10 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           DateTime? date;
           if (dateStr.isNotEmpty) {
             try {
-              // Try multiple date formats
-              if (dateStr.contains('-')) {
-                date = DateTime.parse(dateStr);
-              } else if (dateStr.contains('/')) {
-                final parts = dateStr.split('/');
-                if (parts.length == 3) {
-                  date = DateTime(
-                    int.parse(parts[2]),
-                    int.parse(parts[1]),
-                    int.parse(parts[0]),
-                  );
-                }
-              }
+              date = _parseDateString(dateStr);
             } catch (e) {
-              _errors.add('Row ${i + 1}: Invalid date format "$dateStr"');
+              _errors.add(
+                  'Row ${i + rowOffset}: Invalid date format "$dateStr"');
             }
           }
 
@@ -673,7 +698,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
             'notes': notes.isEmpty ? null : notes,
           });
         } catch (e) {
-          _errors.add('Row ${i + 1}: Error parsing - $e');
+          _errors.add('Row ${i + rowOffset}: Error parsing - $e');
         }
       }
 
@@ -684,6 +709,10 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
       });
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Import to Firestore
+  // ---------------------------------------------------------------------------
 
   Future<void> _importData() async {
     if (_selectedBranchId == null || _parsedData.isEmpty) return;
@@ -703,28 +732,31 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
       return;
     }
 
-    // Get all farmers from this branch
-    final farmersSnapshot = await _firestore
-        .collection('farmers')
-        .where('branchId', isEqualTo: _selectedBranchId)
-        .get();
-
-    final farmersByName = <String, String>{};
-    for (var doc in farmersSnapshot.docs) {
-      final name = (doc.data()['name'] ?? '').toString().toLowerCase().trim();
-      farmersByName[name] = doc.id;
-    }
-
     try {
+      // Get all farmers from this branch
+      final farmersSnapshot = await _firestore
+          .collection('farmers')
+          .where('branchId', isEqualTo: _selectedBranchId)
+          .get();
+
+      final farmersByName = <String, String>{};
+      for (var doc in farmersSnapshot.docs) {
+        final name = (doc.data()['name'] ?? '').toString().toLowerCase().trim();
+        farmersByName[name] = doc.id;
+      }
+
       for (var i = 0; i < _parsedData.length; i++) {
         final row = _parsedData[i];
         final farmerName = row['farmerName'].toString().toLowerCase().trim();
-        
+
         final farmerId = farmersByName[farmerName];
         if (farmerId == null) {
-          _errors.add('Farmer "${row['farmerName']}" not found in $_selectedBranchName');
+          _errors.add(
+              'Farmer "${row['farmerName']}" not found in $_selectedBranchName');
           continue;
         }
+
+        final double amount = (row['amount'] as num).toDouble();
 
         // Create advance record
         await _firestore.collection('advances').add({
@@ -732,8 +764,8 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           'farmerName': row['farmerName'],
           'branchId': _selectedBranchId,
           'branchName': _selectedBranchName,
-          'amount': row['amount'],
-          'balance': row['amount'], // Initial balance equals amount
+          'amount': amount,
+          'balance': amount, // Initial balance equals amount
           'date': row['date'] ?? DateTime.now(),
           'notes': row['notes'] ?? '',
           'isActive': true,
@@ -747,9 +779,11 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
         await _firestore.runTransaction((transaction) async {
           final farmerSnapshot = await transaction.get(farmerDoc);
           if (farmerSnapshot.exists) {
-            final currentAdvance = (farmerSnapshot.data()?['advanceBalance'] ?? 0.0);
+            final currentAdvance =
+                ((farmerSnapshot.data()?['advanceBalance'] ?? 0) as num)
+                    .toDouble();
             transaction.update(farmerDoc, {
-              'advanceBalance': currentAdvance + row['amount'],
+              'advanceBalance': currentAdvance + amount,
               'updatedAt': FieldValue.serverTimestamp(),
             });
           }
