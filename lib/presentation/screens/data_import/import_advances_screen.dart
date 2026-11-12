@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
-import 'package:csv/csv.dart';
+import 'package:csv/csv.dart' show CsvToListConverter;
 import 'package:excel/excel.dart' hide Border;
 
 class ImportAdvancesScreen extends StatefulWidget {
@@ -463,14 +463,14 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
 
   Future<void> _pickFile() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final files = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv', 'xlsx'],
       );
 
-      if (result != null && result.files.single.bytes != null) {
-        final bytes = result.files.single.bytes!;
-        final extension = result.files.single.extension?.toLowerCase();
+      if (files != null && files.isNotEmpty && files.first.bytes != null) {
+        final bytes = files.first.bytes!;
+        final extension = files.first.extension?.toLowerCase();
         
         if (extension == 'xlsx') {
           await _parseExcel(bytes);

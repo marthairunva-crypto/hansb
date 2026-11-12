@@ -716,13 +716,13 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
 
   Future<void> _pickFile() async {
     try {
-      final result = await FilePicker.pickFiles(
+      final files = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'], // the excel package cannot read old .xls
       );
-      if (result == null) return;
+      if (files == null || files.isEmpty) return;
 
-      final file = result.files.single;
+      final file = files.first;
       if (file.bytes == null) {
         setState(() => _errors = ['Could not read the file contents.']);
         return;
