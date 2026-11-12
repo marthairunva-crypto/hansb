@@ -719,7 +719,6 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'], // the excel package cannot read old .xls
-        withData: true, // needed on mobile/desktop to get the bytes
       );
       if (result == null) return;
 

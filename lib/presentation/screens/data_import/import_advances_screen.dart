@@ -466,7 +466,6 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv', 'xlsx'],
-        withData: true,
       );
 
       if (result != null && result.files.single.bytes != null) {
@@ -611,7 +610,8 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     });
 
     try {
-      final rows = CsvToListConverter().convert(csvString);
+      final converter = CsvToListConverter();
+      final rows = converter.convert(csvString);
       
       // Skip header row if it exists
       final dataRows = rows.length > 0 && rows[0][0].toString().toLowerCase().contains('name')
