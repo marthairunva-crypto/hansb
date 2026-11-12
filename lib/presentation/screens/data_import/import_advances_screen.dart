@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'package:csv/csv.dart';
-import 'package:excel/excel.dart' hide Border;
+// excel exports its own Border / BorderStyle / TextSpan, which clash with Flutter's.
+import 'package:excel/excel.dart' hide Border, BorderStyle, TextSpan;
+import '../../../core/services/auth_service.dart';
 
 class ImportAdvancesScreen extends StatefulWidget {
   const ImportAdvancesScreen({Key? key}) : super(key: key);
@@ -22,147 +23,431 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
   List<Map<String, dynamic>> _parsedData = [];
   List<String> _errors = [];
   int _importedCount = 0;
+  int _createdFarmers = 0;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text('Import Previous Advances'),
-        backgroundColor: const Color(0xFF2E7D32),
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 800),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildInfoCard(),
-                const SizedBox(height: 24),
-                _buildBranchSelector(),
-                const SizedBox(height: 24),
-                _buildFilePickerSection(),
-                if (_parsedData.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  _buildPreviewSection(),
-                ],
-                if (_errors.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  _buildErrorsSection(),
-                ],
-                if (_importedCount > 0) ...[
-                  const SizedBox(height: 24),
-                  _buildSuccessMessage(),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  /// Your ledger's Excel date cells have day and month swapped
+  /// (e.g. 11 Sept was stored as 9 Nov). This corrects them while parsing.
+  bool _swapExcelDayMonth = false; // default: dates exactly as Excel shows them
 
-  Widget _buildInfoCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  /// Create farmers that are not found in the selected branch.
+  bool _createMissingFarmers = true;
+
+  /// Name of the file the user picked (shown in the upload box).
+  String? _fileName;
+  int _progress = 0;
+
+  void _showDialog(String title, String message, {bool isError = false}) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
           children: [
-            Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue[700], size: 24),
-                const SizedBox(width: 12),
-                const Text(
-                  'CSV Format Instructions',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: isError ? Colors.red[700] : Colors.green[700],
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Your file should have the following columns (in order):',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            _buildFormatRow('1', 'Farmer Name', 'e.g., John Doe'),
-            _buildFormatRow('2', 'Farmer Phone', 'e.g., 0700123456 (optional)'),
-            _buildFormatRow('3', 'Amount', 'e.g., 50000'),
-            _buildFormatRow('4', 'Date', 'e.g., 2024-01-15 or 15/01/2024'),
-            _buildFormatRow('5', 'Notes', 'e.g., Seed advance (optional)'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.amber[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.amber[200]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.amber[800]),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Make sure farmers exist in the system before importing advances. Unknown farmers will be skipped.',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
               ),
             ),
           ],
         ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildFormatRow(String num, String label, String example) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 16, bottom: 8),
-      child: Row(
+  // ---------------------------------------------------------------------------
+  // Design tokens
+  // ---------------------------------------------------------------------------
+
+  static const _green = Color(0xFF2E7D32);
+  static const _ink = Color(0xFF1F2937);
+  static const _muted = Color(0xFF6B7280);
+  static const _line = Color(0xFFE5E7EB);
+  static const _bad = Color(0xFFC62828);
+  static const _info = Color(0xFF1565C0);
+
+  BoxDecoration get _cardDecoration => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _line),
+      );
+
+  final _money = NumberFormat('#,##0');
+  final _dateFmt = DateFormat('dd/MM/yyyy');
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7F6),
+      appBar: AppBar(
+        title: const Text('Import Previous Advances'),
+        backgroundColor: _green,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: LayoutBuilder(builder: (context, c) {
+        final wide = c.maxWidth >= 1000;
+
+        final left = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildBranchCard(),
+            const SizedBox(height: 20),
+            _buildUploadCard(),
+            const SizedBox(height: 20),
+            _buildFormatCard(),
+          ],
+        );
+
+        final right = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_importedCount > 0 && !_isLoading) ...[
+              _buildSuccessMessage(),
+              const SizedBox(height: 20),
+            ],
+            if (_errors.isNotEmpty) ...[
+              _buildMessagesCard(),
+              const SizedBox(height: 20),
+            ],
+            if (_parsedData.isNotEmpty)
+              _buildPreviewCard()
+            else
+              _buildEmptyState(),
+          ],
+        );
+
+        return SingleChildScrollView(
+          controller: _scroll,
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1600),
+              child: wide
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 400, child: left),
+                        const SizedBox(width: 24),
+                        Expanded(child: right),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [left, const SizedBox(height: 20), right],
+                    ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reusable pieces
+  // ---------------------------------------------------------------------------
+
+  Widget _stepCard({
+    String? step,
+    IconData? icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    bool done = false,
+    required Widget child,
+  }) {
+    final Widget badgeChild;
+    if (done) {
+      badgeChild = const Icon(Icons.check, size: 16, color: Colors.white);
+    } else if (step != null) {
+      badgeChild = Text(step,
+          style: const TextStyle(
+              color: _green, fontWeight: FontWeight.w700, fontSize: 13));
+    } else {
+      badgeChild = Icon(icon ?? Icons.circle, size: 16, color: _green);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 24,
-            height: 24,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              num,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: done ? _green : _green.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: badgeChild,
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _ink)),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(subtitle,
+                          style: const TextStyle(
+                              fontSize: 12.5, color: _muted, height: 1.35)),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 12),
+                trailing,
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _kpi({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      width: 230,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              shape: BoxShape.circle,
             ),
+            child: Icon(icon, size: 20, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Text(label,
+                    style: const TextStyle(fontSize: 12, color: _muted)),
+                const SizedBox(height: 2),
+                Text(value,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: _ink)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Left column: branch, upload, format guide
+  // ---------------------------------------------------------------------------
+
+  Widget _buildBranchCard() {
+    return _stepCard(
+      step: '1',
+      title: 'Select branch',
+      subtitle: 'Advances are imported into this branch',
+      done: _selectedBranchId != null,
+      child: StreamBuilder<QuerySnapshot>(
+        stream: _firestore.collection('branches').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 3),
                 ),
-                Text(
-                  example,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+              ),
+            );
+          }
+          final branches = snapshot.data!.docs;
+          String label(QueryDocumentSnapshot doc) {
+            final d = doc.data() as Map<String, dynamic>;
+            return (d['branch_name'] ?? d['name'] ?? 'Unknown').toString();
+          }
+
+          return DropdownButtonFormField<String>(
+            value: _selectedBranchId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              prefixIcon: const Icon(Icons.store_outlined, size: 20),
+            ),
+            hint: const Text('Choose a branch'),
+            items: branches
+                .map((doc) => DropdownMenuItem(
+                      value: doc.id,
+                      child: Text(label(doc)),
+                    ))
+                .toList(),
+            onChanged: (value) {
+              final selected = branches.firstWhere((doc) => doc.id == value);
+              setState(() {
+                _selectedBranchId = value;
+                _selectedBranchName = label(selected);
+              });
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildUploadCard() {
+    final enabled = _selectedBranchId != null && !_isLoading;
+    final hasFile = _fileName != null;
+
+    final String title = _selectedBranchId == null
+        ? 'Select a branch first'
+        : (hasFile ? _fileName! : 'Choose Excel or CSV file');
+    final String sub = _selectedBranchId == null
+        ? 'Pick the branch in step 1 to unlock the upload'
+        : (hasFile
+            ? 'Click to replace the file'
+            : 'Click to browse · .xlsx or .csv');
+
+    return _stepCard(
+      step: '2',
+      title: 'Upload file',
+      subtitle: 'Excel ledger (.xlsx) or a simple CSV',
+      done: hasFile && _parsedData.isNotEmpty,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: enabled ? _pickFile : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              decoration: BoxDecoration(
+                color: enabled
+                    ? _green.withOpacity(0.04)
+                    : const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: enabled ? _green.withOpacity(0.5) : _line,
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    hasFile ? Icons.description_outlined : Icons.upload_file,
+                    size: 34,
+                    color: enabled ? _green : Colors.grey[400],
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: enabled ? _green : _muted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(sub,
+                            style: const TextStyle(
+                                fontSize: 12.5, color: _muted)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _line),
+            ),
+            child: Row(
+              children: [
+                Switch(
+                  value: _swapExcelDayMonth,
+                  activeColor: _green,
+                  onChanged: (v) => setState(() => _swapExcelDayMonth = v),
+                ),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Swap day/month in Excel date cells',
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: _ink)),
+                      SizedBox(height: 2),
+                      Text(
+                        'OFF (default): dates are imported exactly as Excel shows '
+                        'them. Applies when you pick the file.',
+                        style: TextStyle(
+                            fontSize: 12, color: _muted, height: 1.35),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -173,257 +458,361 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     );
   }
 
-  Widget _buildBranchSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
+  Widget _buildFormatCard() {
+    Widget col(String n, String label, String example) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Select Branch',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _green,
+                borderRadius: BorderRadius.circular(5),
               ),
-            ),
-            const SizedBox(height: 12),
-            StreamBuilder<QuerySnapshot>(
-              stream: _firestore.collection('branches').snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const CircularProgressIndicator();
-                }
-
-                final branches = snapshot.data!.docs;
-
-                return DropdownButtonFormField<String>(
-                  value: _selectedBranchId,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                  hint: const Text('Choose a branch'),
-                  items: branches.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    return DropdownMenuItem(
-                      value: doc.id,
-                      child: Text((data['branch_name'] ?? 'Unknown').toString()),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    final selected =
-                        branches.firstWhere((doc) => doc.id == value);
-                    final data = selected.data() as Map<String, dynamic>;
-                    setState(() {
-                      _selectedBranchId = value;
-                      _selectedBranchName = (data['branch_name'] ?? '').toString();
-                    });
-                  },
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilePickerSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Upload File',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: _selectedBranchId == null ? null : _pickFile,
-              child: Container(
-                padding: const EdgeInsets.all(40),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _selectedBranchId == null
-                        ? Colors.grey[300]!
-                        : const Color(0xFF2E7D32),
-                    width: 2,
-                    strokeAlign: BorderSide.strokeAlignInside,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  color: _selectedBranchId == null
-                      ? Colors.grey[100]
-                      : const Color(0xFF2E7D32).withOpacity(0.05),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.cloud_upload_outlined,
-                      size: 64,
-                      color: _selectedBranchId == null
-                          ? Colors.grey[400]
-                          : const Color(0xFF2E7D32),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _selectedBranchId == null
-                          ? 'Select a branch first'
-                          : 'Click to select CSV or Excel file',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: _selectedBranchId == null
-                            ? Colors.grey[600]
-                            : const Color(0xFF2E7D32),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Supported formats: Excel (.xlsx) or CSV (.csv)',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPreviewSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Preview (${_parsedData.length} records)',
+              child: Text(n,
                   style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: _ink)),
+                  Text(example,
+                      style: const TextStyle(fontSize: 12, color: _muted)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _stepCard(
+      icon: Icons.info_outline,
+      title: 'File format',
+      subtitle: 'Simple CSV / Excel columns, in this order',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          col('1', 'Farmer name', 'e.g. John Doe'),
+          col('2', 'Farmer phone', 'e.g. 0700123456 (optional)'),
+          col('3', 'Amount', 'e.g. 50000'),
+          col('4', 'Date', 'e.g. 2024-01-15 or 15/01/2024'),
+          col('5', 'Notes', 'e.g. Seed advance (optional)'),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _info.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _info.withOpacity(0.25)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.auto_awesome, size: 18, color: _info),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Ledger-style Excel files (NAME / DATE / ADVANCE AMOUNT / '
+                    'RECOVERY) are detected automatically, so you can upload '
+                    'them as they are.',
+                    style: TextStyle(fontSize: 12.5, color: _ink, height: 1.4),
                   ),
                 ),
-                if (!_isLoading)
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Right column: empty state, preview, messages, success
+  // ---------------------------------------------------------------------------
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
+      decoration: _cardDecoration,
+      child: Column(
+        children: [
+          Icon(Icons.table_view_outlined, size: 56, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          const Text('No file loaded yet',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w700, color: _ink)),
+          const SizedBox(height: 6),
+          const Text(
+            'Choose a branch and upload your file. A preview of every advance '
+            'appears here for you to check before anything is saved.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: _muted, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreviewCard() {
+    final total = _parsedData.fold<double>(
+        0, (s, r) => s + ((r['amount'] as num?)?.toDouble() ?? 0));
+    final farmers = _parsedData
+        .map((r) => _normName(r['farmerName'].toString()))
+        .toSet()
+        .length;
+    final noDate = _parsedData.where((r) => r['date'] == null).length;
+
+    return _stepCard(
+      step: '3',
+      title: 'Review & import',
+      subtitle: 'Check the numbers against your file, then import',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _kpi(
+                icon: Icons.receipt_long_outlined,
+                label: 'Advances',
+                value: '${_parsedData.length}',
+                color: _info,
+              ),
+              _kpi(
+                icon: Icons.groups_outlined,
+                label: 'Farmers',
+                value: '$farmers',
+                color: _info,
+              ),
+              _kpi(
+                icon: Icons.payments_outlined,
+                label: 'Total amount',
+                value: 'UGX ${_money.format(total)}',
+                color: _green,
+              ),
+              if (noDate > 0)
+                _kpi(
+                  icon: Icons.event_busy_outlined,
+                  label: 'No date (today used)',
+                  value: '$noDate',
+                  color: const Color(0xFFB26A00),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.fromLTRB(8, 6, 16, 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _line),
+            ),
+            child: Row(
+              children: [
+                Switch(
+                  value: _createMissingFarmers,
+                  activeColor: _green,
+                  onChanged: _isLoading
+                      ? null
+                      : (v) => setState(() => _createMissingFarmers = v),
+                ),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Create missing farmers',
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: _ink)),
+                      SizedBox(height: 2),
+                      Text(
+                        'Farmers not found in this branch are created '
+                        'automatically. Turn off to skip them instead.',
+                        style: TextStyle(
+                            fontSize: 12, color: _muted, height: 1.35),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                if (_isLoading)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 3),
+                      ),
+                      const SizedBox(width: 12),
+                      Text('Importing $_progress of ${_parsedData.length}…',
+                          style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: _ink)),
+                    ],
+                  )
+                else
                   ElevatedButton.icon(
                     onPressed: _importData,
-                    icon: const Icon(Icons.upload),
-                    label: const Text('Import All'),
+                    icon: const Icon(Icons.upload, size: 20),
+                    label: Text('Import ${_parsedData.length} advances'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E7D32),
+                      backgroundColor: _green,
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 22, vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            if (_isLoading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(
-                    const Color(0xFF2E7D32).withOpacity(0.1),
-                  ),
-                  columns: const [
-                    DataColumn(label: Text('Farmer')),
-                    DataColumn(label: Text('Phone')),
-                    DataColumn(label: Text('Amount')),
-                    DataColumn(label: Text('Date')),
-                    DataColumn(label: Text('Notes')),
-                  ],
-                  rows: _parsedData.take(10).map((row) {
-                    return DataRow(
-                      cells: [
-                        DataCell(Text(row['farmerName'] ?? '')),
-                        DataCell(Text(row['phone'] ?? '-')),
-                        DataCell(Text(
-                          NumberFormat('#,##0').format(row['amount'] ?? 0),
-                        )),
-                        DataCell(Text(
-                          row['date'] != null
-                              ? DateFormat('dd/MM/yyyy').format(row['date'])
-                              : '-',
-                        )),
-                        DataCell(Text(row['notes'] ?? '-')),
-                      ],
-                    );
-                  }).toList(),
-                ),
-              ),
-            if (_parsedData.length > 10)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text(
-                  '... and ${_parsedData.length - 10} more records',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _line),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 520),
+                child: SingleChildScrollView(
+                  child: LayoutBuilder(
+                    builder: (context, c) => SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minWidth: c.maxWidth),
+                        child: DataTable(
+                          columnSpacing: 28,
+                          headingRowColor: MaterialStateProperty.all(
+                            const Color(0xFFF3F4F6),
+                          ),
+                          headingTextStyle: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: _muted,
+                          ),
+                          columns: const [
+                            DataColumn(label: Text('#')),
+                            DataColumn(label: Text('FARMER')),
+                            DataColumn(label: Text('PHONE')),
+                            DataColumn(label: Text('AMOUNT'), numeric: true),
+                            DataColumn(label: Text('DATE')),
+                            DataColumn(label: Text('NOTES')),
+                          ],
+                          rows: [
+                            for (var i = 0; i < _parsedData.length; i++)
+                              _buildDataRow(i, _parsedData[i]),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildErrorsSection() {
-    return Card(
-      color: Colors.red[50],
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  DataRow _buildDataRow(int index, Map<String, dynamic> row) {
+    final DateTime? date = row['date'] as DateTime?;
+    final amount = (row['amount'] as num?) ?? 0;
+    const cellStyle = TextStyle(fontSize: 13.5, color: _ink);
+
+    return DataRow(
+      cells: [
+        DataCell(Text('${index + 1}',
+            style: const TextStyle(fontSize: 13, color: _muted))),
+        DataCell(ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Text((row['farmerName'] ?? '').toString(),
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 13.5, color: _ink)),
+        )),
+        DataCell(Text((row['phone'] ?? '–').toString(), style: cellStyle)),
+        DataCell(Text(_money.format(amount), style: cellStyle)),
+        DataCell(Text(date != null ? _dateFmt.format(date) : '–',
+            style: TextStyle(
+                fontSize: 13.5,
+                color: date == null ? const Color(0xFFB26A00) : _ink))),
+        DataCell(ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Text((row['notes'] ?? '–').toString(),
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: _muted)),
+        )),
+      ],
+    );
+  }
+
+  Widget _buildMessagesCard() {
+    final hasData = _parsedData.isNotEmpty;
+    final color = hasData ? Colors.amber[50]! : Colors.red[50]!;
+    final iconColor = hasData ? Colors.amber[800]! : _bad;
+    final items = _errors;
+
+    return Material(
+      color: color,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: iconColor.withOpacity(0.3)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: ValueKey('msgs-${items.length}-$hasData'),
+          initiallyExpanded: !hasData,
+          leading: Icon(
+              hasData ? Icons.warning_amber_rounded : Icons.error_outline,
+              color: iconColor),
+          title: Text(
+              '${hasData ? 'Warnings' : 'Errors'} (${items.length})',
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700, color: _ink)),
+          subtitle: hasData
+              ? const Text('Tap to view details',
+                  style: TextStyle(fontSize: 12, color: _muted))
+              : null,
+          childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.red[700]),
-                const SizedBox(width: 12),
-                const Text(
-                  'Errors',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ..._errors.map((error) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    '• $error',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.red[900],
-                    ),
-                  ),
+            ...items.take(30).map((m) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('• $m',
+                      style: const TextStyle(fontSize: 13, color: _ink)),
                 )),
+            if (items.length > 30)
+              Text('… and ${items.length - 30} more',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: _muted)),
           ],
         ),
       ),
@@ -431,35 +820,36 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
   }
 
   Widget _buildSuccessMessage() {
-    return Card(
-      color: Colors.green[50],
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Icon(Icons.check_circle_outline, color: Colors.green[700], size: 32),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Import Successful!',
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withOpacity(0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, color: Colors.green[700], size: 34),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Import finished',
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Successfully imported $_importedCount advances to $_selectedBranchName',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ],
-              ),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _ink)),
+                const SizedBox(height: 4),
+                Text(
+                  'Imported $_importedCount advances to $_selectedBranchName'
+                  '${_createdFarmers > 0 ? ' · $_createdFarmers new farmers created' : ''}',
+                  style: const TextStyle(fontSize: 14, color: _ink),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -477,6 +867,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
 
       if (files != null && files.isNotEmpty) {
         final file = files.first;
+        if (mounted) setState(() => _fileName = file.name);
         final bytes = await file.readAsBytes();
         final extension = file.extension?.toLowerCase();
 
@@ -489,9 +880,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking file: $e')),
-        );
+        _showDialog('Error', 'Error picking file: $e', isError: true);
       }
     }
   }
@@ -500,29 +889,186 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
   String _cellText(Data? cell) {
     final v = cell?.value;
     if (v == null) return '';
-    if (v is TextCellValue) return v.value.toString();
+    if (v is TextCellValue) {
+      // `value` is a String in some excel versions and a TextSpan in others.
+      final dynamic t = v.value;
+      if (t is String) return t;
+      try {
+        return t.toPlainText().toString();
+      } catch (_) {
+        return t.toString();
+      }
+    }
     if (v is IntCellValue) return v.value.toString();
     if (v is DoubleCellValue) return v.value.toString();
     return v.toString();
   }
 
-  /// Parses a date string in yyyy-MM-dd or dd/MM/yyyy format.
+  /// Parses yyyy-MM-dd or d/M/yyyy. Tolerates typos like "20/8//2026"
+  /// (double slash) and "189/9/2026" (extra digit in the day).
+  /// Returns null when the text is not a usable date.
   DateTime? _parseDateString(String dateStr) {
     final s = dateStr.trim();
     if (s.isEmpty) return null;
     if (s.contains('-')) {
-      return DateTime.parse(s);
-    } else if (s.contains('/')) {
-      final parts = s.split('/');
-      if (parts.length == 3) {
-        return DateTime(
-          int.parse(parts[2]),
-          int.parse(parts[1]),
-          int.parse(parts[0]),
-        );
+      return DateTime.tryParse(s);
+    }
+    final parts = s.split('/').where((p) => p.trim().isNotEmpty).toList();
+    if (parts.length != 3) return null;
+    var dayStr = parts[0].trim();
+    if (dayStr.length > 2) dayStr = dayStr.substring(0, 2);
+    final d = int.tryParse(dayStr);
+    final m = int.tryParse(parts[1].trim());
+    final y = int.tryParse(parts[2].trim());
+    if (d == null || m == null || y == null) return null;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    return DateTime(y, m, d);
+  }
+
+  /// Parses a number like "500000" or "1,200,000". Returns null if the text
+  /// is not a plain number (e.g. a date or blank).
+  double? _parseAmount(String s) {
+    final t = s.replaceAll(',', '').trim();
+    if (t.isEmpty) return null;
+    return double.tryParse(t);
+  }
+
+  String _cleanName(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  String _normName(String s) => _cleanName(s).toLowerCase();
+
+  /// Reads a date from a spreadsheet cell (real date cell or text).
+  DateTime? _dateFromCell(Data? cell) {
+    final v = cell?.value;
+    if (v == null) return null;
+    if (v is DateCellValue || v is DateTimeCellValue) {
+      final dynamic dv = v;
+      final int y = dv.year as int;
+      final int mo = dv.month as int;
+      final int d = dv.day as int;
+      // The ledger's real date cells have day/month swapped. Only swap when
+      // the stored "day" is a valid month (<= 12).
+      if (_swapExcelDayMonth && d <= 12) {
+        return DateTime(y, d, mo);
       }
+      return DateTime(y, mo, d);
+    }
+    return _parseDateString(_cellText(cell));
+  }
+
+  /// The date exactly as Excel stored it (no day/month correction).
+  DateTime? _rawExcelDate(Data? cell) {
+    final v = cell?.value;
+    if (v is DateCellValue || v is DateTimeCellValue) {
+      final dynamic dv = v;
+      return DateTime(dv.year as int, dv.month as int, dv.day as int);
     }
     return null;
+  }
+
+  Data? _at(List<Data?> row, int i) => i < row.length ? row[i] : null;
+
+  /// True if this sheet looks like the "ADVANCE LEDGER" layout:
+  /// NAME | DATE | ADVANCE AMOUNT | (total) | DATE | RECOVERY | BALANCE
+  bool _isLedgerSheet(Sheet sheet) {
+    final rows = sheet.rows;
+    for (var i = 0; i < rows.length && i < 5; i++) {
+      final firstCell = _cleanName(_cellText(_at(rows[i], 0))).toUpperCase();
+      final thirdCell = _cleanName(_cellText(_at(rows[i], 2))).toUpperCase();
+      if (firstCell == 'NAME' && thirdCell.contains('ADVANCE')) return true;
+      if (firstCell.contains('LEDGER')) return true;
+    }
+    return false;
+  }
+
+  /// Parses the ledger layout where the farmer's name appears only on the
+  /// first row of each group, followed by more advance rows and a total row.
+  void _parseLedger(Sheet sheet) {
+    final rows = sheet.rows;
+
+    var headerIndex = -1;
+    for (var i = 0; i < rows.length && i < 10; i++) {
+      if (_cleanName(_cellText(_at(rows[i], 0))).toUpperCase() == 'NAME') {
+        headerIndex = i;
+        break;
+      }
+    }
+
+    String? currentName;
+    DateTime? lastDateForFarmer;
+
+    for (var i = headerIndex + 1; i < rows.length; i++) {
+      final row = rows[i];
+      final excelRow = i + 1;
+
+      final name = _cleanName(_cellText(_at(row, 0)));
+      if (name.isNotEmpty) {
+        if (name.toUpperCase() == 'TOTAL') break; // grand total row
+        currentName = name;
+        lastDateForFarmer = null;
+      }
+      if (currentName == null) continue;
+
+      // Advance amount lives in column C. Total rows have it empty
+      // (their number is in column D), so they are skipped here.
+      final amount = _parseAmount(_cellText(_at(row, 2)));
+      if (amount == null || amount <= 0) continue;
+
+      // Date (column B)
+      final dateCell = _at(row, 1);
+      final dateText = _cellText(dateCell).trim();
+      DateTime? date = _dateFromCell(dateCell);
+      final noteParts = <String>[];
+
+      if (date == null) {
+        if (dateText.isEmpty) {
+          // blank date: use the farmer's previous advance date
+          date = lastDateForFarmer;
+          noteParts.add('Date missing in ledger');
+        } else {
+          noteParts.add('Original date: $dateText');
+        }
+        _errors.add(
+            'Warning, row $excelRow ($currentName): no valid date'
+            '${dateText.isNotEmpty ? ' ("$dateText")' : ''}. '
+            '${date != null ? 'Used the previous date.' : 'Today\'s date will be used.'}');
+      } else if (dateText.contains('//') ||
+          RegExp(r'^\d{3,}/').hasMatch(dateText)) {
+        noteParts.add('Original date: $dateText');
+        _errors.add(
+            'Warning, row $excelRow ($currentName): date "$dateText" looked '
+            'mistyped, read as ${DateFormat('dd/MM/yyyy').format(date)}.');
+      }
+      if (date != null) lastDateForFarmer = date;
+
+      // Show what Excel displayed when the date had to be corrected.
+      final rawDate = _rawExcelDate(dateCell);
+      if (rawDate != null &&
+          date != null &&
+          (rawDate.day != date.day || rawDate.month != date.month)) {
+        noteParts.add(
+            'Date corrected (Excel showed ${DateFormat('dd/MM/yyyy').format(rawDate)})');
+      }
+
+      // Recovery in the same row (columns E = date, F = amount)
+      final recovery = _parseAmount(_cellText(_at(row, 5))) ?? 0;
+      if (recovery > 0) {
+        final recDate = _cellText(_at(row, 4)).trim();
+        noteParts.add(
+            'Recovered ${NumberFormat('#,##0').format(recovery)}'
+            '${recDate.isNotEmpty ? ' on $recDate' : ''}');
+      }
+      final balance = (amount - recovery) < 0 ? 0.0 : (amount - recovery);
+
+      _parsedData.add({
+        'farmerName': currentName,
+        'phone': null,
+        'amount': amount,
+        'balance': balance,
+        'date': date,
+        'notes': noteParts.isEmpty ? null : noteParts.join('. '),
+      });
+    }
   }
 
   Future<void> _parseExcel(List<int> bytes) async {
@@ -551,6 +1097,17 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
         return;
       }
 
+      // Ledger layout (NAME / DATE / ADVANCE AMOUNT / RECOVERY / BALANCE)
+      if (_isLedgerSheet(sheet)) {
+        _parseLedger(sheet);
+        if (_parsedData.isEmpty) {
+          _errors.add('No advances found in the ledger sheet');
+        }
+        setState(() {});
+        return;
+      }
+
+      // Simple layout: Name | Phone | Amount | Date | Notes
       // Skip header row (first row)
       final dataRows = sheet.rows.skip(1).toList();
 
@@ -721,14 +1278,17 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
       _isLoading = true;
       _errors = [];
       _importedCount = 0;
+      _createdFarmers = 0;
+      _progress = 0;
     });
 
-    final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUser = AuthService.instance.currentUser;
     if (currentUser == null) {
       setState(() {
         _errors.add('Not logged in');
         _isLoading = false;
       });
+      _showDialog('Not Logged In', 'Please sign in to import data', isError: true);
       return;
     }
 
@@ -741,22 +1301,46 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
 
       final farmersByName = <String, String>{};
       for (var doc in farmersSnapshot.docs) {
-        final name = (doc.data()['name'] ?? '').toString().toLowerCase().trim();
+        final name = _normName((doc.data()['name'] ?? '').toString());
         farmersByName[name] = doc.id;
       }
 
       for (var i = 0; i < _parsedData.length; i++) {
+        if (mounted) setState(() => _progress = i); // rows before i are done
         final row = _parsedData[i];
-        final farmerName = row['farmerName'].toString().toLowerCase().trim();
+        final farmerKey = _normName(row['farmerName'].toString());
 
-        final farmerId = farmersByName[farmerName];
+        String? farmerId = farmersByName[farmerKey];
         if (farmerId == null) {
-          _errors.add(
-              'Farmer "${row['farmerName']}" not found in $_selectedBranchName');
-          continue;
+          if (!_createMissingFarmers) {
+            final msg =
+                'Farmer "${row['farmerName']}" not found in $_selectedBranchName';
+            if (!_errors.contains(msg)) _errors.add(msg);
+            continue;
+          }
+
+          // Create the farmer in this branch
+          final newFarmer = _firestore.collection('farmers').doc();
+          await newFarmer.set({
+            'name': _cleanName(row['farmerName'].toString()),
+            'phone': row['phone'] ?? '',
+            'branchId': _selectedBranchId,
+            'branchName': _selectedBranchName,
+            'advanceBalance': 0.0,
+            'isActive': true,
+            'createdBy': currentUser.uid,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          farmerId = newFarmer.id;
+          farmersByName[farmerKey] = farmerId;
+          _createdFarmers++;
         }
 
         final double amount = (row['amount'] as num).toDouble();
+        // Outstanding balance (amount minus any recovery already made)
+        final double balance =
+            ((row['balance'] ?? row['amount']) as num).toDouble();
 
         // Create advance record
         await _firestore.collection('advances').add({
@@ -765,10 +1349,10 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
           'branchId': _selectedBranchId,
           'branchName': _selectedBranchName,
           'amount': amount,
-          'balance': amount, // Initial balance equals amount
+          'balance': balance,
           'date': row['date'] ?? DateTime.now(),
           'notes': row['notes'] ?? '',
-          'isActive': true,
+          'isActive': balance > 0,
           'createdBy': currentUser.uid,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
@@ -783,7 +1367,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
                 ((farmerSnapshot.data()?['advanceBalance'] ?? 0) as num)
                     .toDouble();
             transaction.update(farmerDoc, {
-              'advanceBalance': currentAdvance + amount,
+              'advanceBalance': currentAdvance + balance,
               'updatedAt': FieldValue.serverTimestamp(),
             });
           }
@@ -794,21 +1378,30 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
 
       setState(() {
         _isLoading = false;
+        // Clear the preview so the same file can't be imported twice by accident
+        _parsedData = [];
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Successfully imported $_importedCount advances'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
+      _showDialog(
+        'Import Successful!',
+        'Successfully imported $_importedCount advances to $_selectedBranchName'
+        '${_createdFarmers > 0 ? '\n\nCreated $_createdFarmers new farmers' : ''}'
+        '${_errors.isNotEmpty ? '\n\n${_errors.length} warnings (check errors section above)' : ''}',
+        isError: false,
+      );
+    } catch (e, st) {
+      debugPrint('Import error: $e\n$st');
       setState(() {
-        _errors.add('Import error: $e');
+        // Rows before _progress were already saved: drop them from the preview
+        // so pressing Import again cannot create duplicates.
+        if (_progress > 0 && _progress <= _parsedData.length) {
+          _parsedData = _parsedData.sublist(_progress);
+        }
+        _errors.add(
+            'Import stopped after $_importedCount advances were saved: $e');
         _isLoading = false;
       });
+      _showDialog('Import Failed', 'Import stopped after $_importedCount advances: $e', isError: true);
     }
   }
 }

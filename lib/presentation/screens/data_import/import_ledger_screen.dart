@@ -35,6 +35,7 @@ class _AdvRow {
     this.note,
     this.recovered = 0,
     this.recoveryDate,
+    this.fixedFrom,
   });
 
   final int sheetRow;
@@ -45,12 +46,14 @@ class _AdvRow {
   String? note; // soft warning, row can still be imported
   final double recovered;
   final DateTime? recoveryDate;
+  final String? fixedFrom; // e.g. 'Excel showed 09/07/2026' when corrected
 }
 
 class _DateResult {
-  _DateResult(this.date, this.issue);
+  _DateResult(this.date, this.issue, [this.fixedFrom]);
   final DateTime? date;
   final String? issue;
+  final String? fixedFrom;
 }
 
 class _Farmer {
@@ -75,7 +78,7 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
 
   /// Excel turns "7/9/2026" typed as day/month into July 9 when the PC is set
   /// to US dates. Real date cells are therefore flipped back by default.
-  bool _swapExcelDates = true;
+  bool _swapExcelDates = false; // default: use dates exactly as Excel shows them
   bool _onlyIssues = false;
 
   List<_Farmer> _farmers = [];
@@ -109,321 +112,699 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
   }
 
   // ---------------------------------------------------------------------------
+  // Design tokens
+  // ---------------------------------------------------------------------------
+
+  static const _ink = Color(0xFF1F2937);
+  static const _muted = Color(0xFF6B7280);
+  static const _line = Color(0xFFE5E7EB);
+  static const _bad = Color(0xFFC62828);
+  static const _warn = Color(0xFFB26A00);
+  static const _info = Color(0xFF1565C0);
+
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _showSnack(String msg, {bool error = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: error ? Colors.red[700] : Colors.green[700],
+        duration: Duration(seconds: error ? 10 : 4),
+      ),
+    );
+  }
+
+  void _scrollTop() {
+    if (_scroll.hasClients) {
+      _scroll.animateTo(0,
+          duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
+    }
+  }
+
+  BoxDecoration get _cardDecoration => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _line),
+      );
+
+  // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF5F7F6),
       appBar: AppBar(
         title: const Text('Import Advance Ledger'),
         backgroundColor: _green,
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 1000),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildInfoCard(),
-                const SizedBox(height: 24),
-                _buildBranchSelector(),
-                const SizedBox(height: 24),
-                _buildFilePickerSection(),
-                if (_rows.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  _buildSummary(),
-                  const SizedBox(height: 24),
-                  _buildMatchingSection(),
-                  const SizedBox(height: 24),
-                  _buildPreviewSection(),
-                ],
-                if (_warnings.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  _buildMessagesCard(
-                    title: 'Warnings',
-                    icon: Icons.warning_amber_rounded,
-                    color: Colors.amber[50]!,
-                    iconColor: Colors.amber[800]!,
-                    items: _warnings,
-                  ),
-                ],
-                if (_errors.isNotEmpty) ...[
-                  const SizedBox(height: 24),
-                  _buildMessagesCard(
-                    title: 'Errors',
-                    icon: Icons.error_outline,
-                    color: Colors.red[50]!,
-                    iconColor: Colors.red[700]!,
-                    items: _errors,
-                  ),
-                ],
-                if (_importedCount > 0 || _duplicateCount > 0) ...[
-                  const SizedBox(height: 24),
-                  _buildSuccessMessage(),
-                ],
-              ],
+      body: LayoutBuilder(builder: (context, c) {
+        final wide = c.maxWidth >= 1000;
+
+        final left = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildIntro(),
+            const SizedBox(height: 20),
+            _buildBranchCard(),
+            const SizedBox(height: 20),
+            _buildFileCard(),
+          ],
+        );
+
+        final right = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_importedCount > 0 || _duplicateCount > 0) ...[
+              _buildSuccessMessage(),
+              const SizedBox(height: 20),
+            ],
+            if (_errors.isNotEmpty) ...[
+              _buildMessagesCard(
+                title: 'Errors',
+                icon: Icons.error_outline,
+                color: Colors.red[50]!,
+                iconColor: _bad,
+                items: _errors,
+                expanded: true,
+              ),
+              const SizedBox(height: 20),
+            ],
+            if (_rows.isNotEmpty) ...[
+              _buildSummary(),
+              const SizedBox(height: 20),
+              _buildMatchingSection(),
+              const SizedBox(height: 20),
+              _buildPreviewSection(),
+            ] else
+              _buildEmptyState(),
+            if (_warnings.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              _buildMessagesCard(
+                title: 'Warnings',
+                icon: Icons.warning_amber_rounded,
+                color: Colors.amber[50]!,
+                iconColor: Colors.amber[800]!,
+                items: _warnings,
+              ),
+            ],
+          ],
+        );
+
+        return SingleChildScrollView(
+          controller: _scroll,
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1600),
+              child: wide
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 400, child: left),
+                        const SizedBox(width: 24),
+                        Expanded(child: right),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [left, const SizedBox(height: 20), right],
+                    ),
             ),
           ),
-        ),
-      ),
+        );
+      }),
     );
   }
 
-  Widget _buildInfoCard() {
-    return Card(
+  // ---------------------------------------------------------------------------
+  // Reusable pieces
+  // ---------------------------------------------------------------------------
+
+  Widget _stepCard({
+    String? step,
+    IconData? icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    bool done = false,
+    required Widget child,
+  }) {
+    final Widget badgeChild;
+    if (done) {
+      badgeChild = const Icon(Icons.check, size: 16, color: Colors.white);
+    } else if (step != null) {
+      badgeChild = Text(step,
+          style: const TextStyle(
+              color: _green, fontWeight: FontWeight.w700, fontSize: 13));
+    } else {
+      badgeChild = Icon(icon ?? Icons.circle, size: 16, color: _green);
+    }
+
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: _line),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blue[700], size: 24),
-                const SizedBox(width: 12),
-                const Text(
-                  'Advance Ledger Format',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Upload your ADVANCE LEDGER Excel file (.xlsx). The farmer name '
-              'is read from the first row of each farmer; the rows below it '
-              '(until the next name) belong to the same farmer.',
-              style: TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 12),
-            _bullet('Subtotal, balance and TOTAL rows are ignored automatically'),
-            _bullet('Farmers are matched to the farmers saved in the selected branch'),
-            _bullet('Unknown farmers and bad dates can be fixed in the preview before importing'),
-            _bullet('Rows that were already imported earlier are skipped (no duplicates)'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _bullet(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 16, bottom: 6),
-      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('• ', style: TextStyle(fontSize: 16)),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBranchSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Select Branch',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            StreamBuilder<QuerySnapshot>(
-              stream: _firestore.collection('branches').snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const CircularProgressIndicator();
-                }
-                final branches = snapshot.data!.docs;
-                return DropdownButtonFormField<String>(
-                  value: _selectedBranchId,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                  hint: const Text('Choose a branch'),
-                  items: branches.map((doc) {
-                    return DropdownMenuItem(
-                      value: doc.id,
-                      child: Text((doc['branch_name'] ?? 'Unknown').toString()),
-                    );
-                  }).toList(),
-                  onChanged: (value) async {
-                    final doc = branches.firstWhere((d) => d.id == value);
-                    setState(() {
-                      _selectedBranchId = value;
-                      _selectedBranchName = (doc['branch_name'] ?? '').toString();
-                      _importedCount = 0;
-                      _duplicateCount = 0;
-                    });
-                    await _loadFarmers();
-                    if (_rows.isNotEmpty) {
-                      setState(_buildMapping);
-                    }
-                  },
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilePickerSection() {
-    final enabled = _selectedBranchId != null && !_isLoading;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Upload Ledger File',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: enabled ? _pickFile : null,
-              child: Container(
-                padding: const EdgeInsets.all(32),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  border: Border.all(
-                    color: enabled ? _green : Colors.grey[300]!,
-                    width: 2,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  color: enabled
-                      ? _green.withOpacity(0.05)
-                      : Colors.grey[100],
+                  color: done ? _green : _green.withOpacity(0.12),
+                  shape: BoxShape.circle,
                 ),
+                child: badgeChild,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.cloud_upload_outlined,
-                      size: 56,
-                      color: enabled ? _green : Colors.grey[400],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _selectedBranchId == null
-                          ? 'Select a branch first'
-                          : (_fileName ?? 'Click to select Excel file (.xlsx)'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: enabled ? _green : Colors.grey[600],
-                      ),
-                    ),
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _ink)),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(subtitle,
+                          style: const TextStyle(
+                              fontSize: 12.5, color: _muted, height: 1.35)),
+                    ],
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _swapExcelDates,
-              activeColor: _green,
-              title: const Text(
-                'Fix day/month swapped in real Excel date cells',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-              subtitle: const Text(
-                'If a date you typed as 7/9/2026 (7 Sept) shows in Excel as '
-                '9 July, keep this ON. Dates stored as text are never changed.',
-                style: TextStyle(fontSize: 12),
-              ),
-              onChanged: (v) {
-                setState(() => _swapExcelDates = v);
-                if (_fileBytes != null) _parseLedger();
-              },
-            ),
-          ],
+              if (trailing != null) ...[
+                const SizedBox(width: 12),
+                trailing,
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
         ),
       ),
     );
   }
 
-  Widget _chip(String label, String value, Color color) {
+  Widget _pill(String text, Color color, {IconData? icon}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.4)),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold, color: color),
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+          ],
+          Text(text,
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+        ],
+      ),
+    );
+  }
+
+  Widget _kpi({
+    required IconData icon,
+    required String label,
+    required String value,
+    String? sub,
+    required Color color,
+  }) {
+    return Container(
+      width: 245,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 20, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(fontSize: 12, color: _muted)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: _ink)),
+                if (sub != null)
+                  Text(sub,
+                      style: const TextStyle(fontSize: 12, color: _muted)),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSummary() {
-    final needAttention = _rows.length - _readyCount;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  // ---------------------------------------------------------------------------
+  // Intro
+  // ---------------------------------------------------------------------------
+
+  Widget _buildIntro() {
+    Widget point(IconData icon, String text) => Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
+            Icon(icon, size: 16, color: _green),
+            const SizedBox(width: 6),
+            Text(text, style: const TextStyle(fontSize: 13, color: _ink)),
+          ],
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Import advance ledger',
+              style: TextStyle(
+                  fontSize: 20, fontWeight: FontWeight.w700, color: _ink)),
+          const SizedBox(height: 4),
+          const Text(
+            'Bring previous advances in from your ADVANCE LEDGER Excel file '
+            '(.xlsx). The farmer name is read from the first row of each '
+            'farmer; the rows below it belong to the same farmer.',
+            style: TextStyle(fontSize: 14, color: _muted, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 22,
+            runSpacing: 8,
+            children: [
+              point(Icons.functions, 'Totals & balances are ignored'),
+              point(Icons.person_search_outlined, 'Farmers matched automatically'),
+              point(Icons.edit_calendar_outlined, 'Fix dates before importing'),
+              point(Icons.verified_outlined, 'Duplicates are skipped'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Left column: branch and file
+  // ---------------------------------------------------------------------------
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
+      decoration: _cardDecoration,
+      child: Column(
+        children: [
+          Icon(Icons.table_view_outlined, size: 56, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          const Text('No ledger loaded yet',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w700, color: _ink)),
+          const SizedBox(height: 6),
+          const Text(
+            'Choose a branch and upload your ADVANCE LEDGER. The summary, '
+            'farmer matching and a preview of every advance appear here for '
+            'you to check before anything is saved.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: _muted, height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBranchCard() {
+    return _stepCard(
+      step: '1',
+      title: 'Select branch',
+      subtitle: 'Advances are imported into this branch',
+      done: _selectedBranchId != null,
+      child: StreamBuilder<QuerySnapshot>(
+        stream: _firestore.collection('branches').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                ),
+              ),
+            );
+          }
+          final branches = snapshot.data!.docs;
+          return DropdownButtonFormField<String>(
+            value: _selectedBranchId,
+            isExpanded: true,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              prefixIcon: const Icon(Icons.store_outlined, size: 20),
+            ),
+            hint: const Text('Choose a branch'),
+            items: branches.map((doc) {
+              return DropdownMenuItem(
+                value: doc.id,
+                child: Text((doc['branch_name'] ?? 'Unknown').toString()),
+              );
+            }).toList(),
+            onChanged: (value) async {
+              final doc = branches.firstWhere((d) => d.id == value);
+              setState(() {
+                _selectedBranchId = value;
+                _selectedBranchName = (doc['branch_name'] ?? '').toString();
+                _importedCount = 0;
+                _duplicateCount = 0;
+              });
+              await _loadFarmers();
+              if (_rows.isNotEmpty) {
+                setState(_buildMapping);
+              }
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFileCard() {
+    final enabled = _selectedBranchId != null && !_isLoading;
+    final hasFile = _fileName != null;
+
+    final String title = _selectedBranchId == null
+        ? 'Select a branch first'
+        : (hasFile ? _fileName! : 'Choose Excel file');
+    final String sub = _selectedBranchId == null
+        ? 'The file is matched against the farmers of the chosen branch'
+        : (hasFile
+            ? 'Click to replace the file'
+            : 'Click to browse · .xlsx only');
+
+    return _stepCard(
+      step: '2',
+      title: 'Upload ledger',
+      subtitle: 'Your ADVANCE LEDGER Excel file',
+      done: hasFile && _rows.isNotEmpty,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: enabled ? _pickFile : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              decoration: BoxDecoration(
+                color: enabled
+                    ? _green.withOpacity(0.04)
+                    : const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: enabled ? _green.withOpacity(0.5) : _line,
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    hasFile ? Icons.description_outlined : Icons.upload_file,
+                    size: 34,
+                    color: enabled ? _green : Colors.grey[400],
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: enabled ? _green : _muted,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(sub,
+                            style: const TextStyle(
+                                fontSize: 12.5, color: _muted)),
+                      ],
+                    ),
+                  ),
+                  if (enabled)
+                    Icon(Icons.chevron_right, color: _green.withOpacity(0.7)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9FAFB),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _line),
+            ),
+            child: Row(
               children: [
-                _chip('Advances in file', '${_rows.length}', Colors.blue[700]!),
-                _chip('Ledger total', 'UGX ${_money.format(_allTotal)}',
-                    Colors.blue[700]!),
-                _chip('Ready to import', '$_readyCount', _green),
-                _chip('Ready amount', 'UGX ${_money.format(_readyTotal)}',
-                    _green),
-                _chip(
-                  'Need attention',
-                  '$needAttention',
-                  needAttention == 0 ? Colors.grey[600]! : Colors.red[700]!,
+                Switch(
+                  value: _swapExcelDates,
+                  activeColor: _green,
+                  onChanged: (v) {
+                    setState(() => _swapExcelDates = v);
+                    if (_fileBytes != null) _parseLedger();
+                  },
+                ),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Swap day/month in Excel date cells',
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: _ink)),
+                      SizedBox(height: 2),
+                      Text(
+                        'OFF (default): dates are imported exactly as Excel shows '
+                        'them. Turn ON only if a date typed as 7/9/2026 (7 Sept) '
+                        'shows in Excel as 9 July.',
+                        style: TextStyle(
+                            fontSize: 12, color: _muted, height: 1.35),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Compare "Ledger total" with the TOTAL at the bottom of your Excel sheet.',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: _isLoading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton.icon(
-                      onPressed: _readyCount == 0 ? null : _importData,
-                      icon: const Icon(Icons.upload),
-                      label: Text('Import $_readyCount ready advances'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 14),
-                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Summary + import button
+  // ---------------------------------------------------------------------------
+
+  Widget _buildSummary() {
+    final needAttention = _rows.length - _readyCount;
+    final names = _ledgerNames;
+    final matchedFarmers = names.where((n) => _mapping[n] != null).length;
+
+    return _stepCard(
+      icon: Icons.dashboard_outlined,
+      title: 'Summary',
+      subtitle:
+          'Compare the ledger total with the TOTAL at the bottom of your Excel sheet',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _kpi(
+                icon: Icons.receipt_long_outlined,
+                label: 'Advances in file',
+                value: '${_rows.length}',
+                sub: 'UGX ${_money.format(_allTotal)}',
+                color: _info,
+              ),
+              _kpi(
+                icon: Icons.check_circle_outline,
+                label: 'Ready to import',
+                value: '$_readyCount',
+                sub: 'UGX ${_money.format(_readyTotal)}',
+                color: _green,
+              ),
+              _kpi(
+                icon: Icons.report_problem_outlined,
+                label: 'Need attention',
+                value: '$needAttention',
+                sub: needAttention == 0 ? 'All good' : 'Fix below',
+                color: needAttention == 0 ? _muted : _bad,
+              ),
+              _kpi(
+                icon: Icons.groups_outlined,
+                label: 'Farmers matched',
+                value: '$matchedFarmers of ${names.length}',
+                sub: matchedFarmers == names.length ? 'All matched' : 'Match below',
+                color: matchedFarmers == names.length ? _green : _warn,
+              ),
+            ],
+          ),
+          const Divider(height: 32, color: _line),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  needAttention == 0
+                      ? 'Everything is ready to import.'
+                      : '$needAttention advance(s) need attention and will be '
+                          'skipped until fixed.',
+                  style: const TextStyle(fontSize: 13.5, color: _muted),
+                ),
+              ),
+              const SizedBox(width: 16),
+              if (_isLoading)
+                const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: _readyCount == 0 ? null : _importData,
+                  icon: const Icon(Icons.upload, size: 20),
+                  label: Text('Import $_readyCount advances'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 22, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step 3: farmer matching
+  // ---------------------------------------------------------------------------
+
+  Widget _matchRow(String name) {
+    final count = _rows.where((r) => r.ledgerName == name).length;
+    final total = _rows
+        .where((r) => r.ledgerName == name)
+        .fold<double>(0, (s, r) => s + r.amount);
+    final isMatched = _mapping[name] != null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(
+            isMatched ? Icons.check_circle : Icons.help_outline,
+            size: 20,
+            color: isMatched ? _green : _bad,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _ink)),
+                Text('$count advance(s) · UGX ${_money.format(total)}',
+                    style: const TextStyle(fontSize: 12, color: _muted)),
+              ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: isMatched ? _line : _bad.withOpacity(0.5)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _mapping[name],
+                  hint: const Text('Choose farmer…'),
+                  items: _farmers
+                      .map((f) => DropdownMenuItem(
+                            value: f.id,
+                            child:
+                                Text(f.name, overflow: TextOverflow.ellipsis),
+                          ))
+                      .toList(),
+                  onChanged: (v) => setState(() => _mapping[name] = v),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -433,212 +814,242 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
     final unmatched = names.where((n) => _mapping[n] == null).toList();
     final matched = names.where((n) => _mapping[n] != null).toList();
 
-    Widget row(String name) {
-      final count = _rows.where((r) => r.ledgerName == name).length;
-      final total = _rows
-          .where((r) => r.ledgerName == name)
-          .fold<double>(0, (s, r) => s + r.amount);
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 4,
+    return _stepCard(
+      step: '3',
+      title: 'Match farmers',
+      subtitle: _farmers.isEmpty
+          ? 'No farmers were found in this branch.'
+          : 'Names are matched ignoring case, spacing and punctuation. '
+              'Pick the right farmer for any name that was not recognised; '
+              'unmatched names are not imported.',
+      done: unmatched.isEmpty,
+      trailing: _pill(
+        '${matched.length} of ${names.length} matched',
+        unmatched.isEmpty ? _green : _bad,
+        icon: unmatched.isEmpty ? Icons.check : Icons.priority_high,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (unmatched.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _bad.withOpacity(0.25)),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
-                  Text('$count advance(s) · UGX ${_money.format(total)}',
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, bottom: 4),
+                    child: Text('Not matched (${unmatched.length})',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: _bad)),
+                  ),
+                  ...unmatched.map(_matchRow),
+                ],
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, size: 20, color: Colors.green[700]),
+                  const SizedBox(width: 10),
+                  const Text('All farmers in the ledger were matched',
+                      style: TextStyle(fontSize: 14, color: _ink)),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 4,
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: _mapping[name],
-                hint: const Text('Choose farmer…'),
-                items: _farmers
-                    .map((f) => DropdownMenuItem(
-                          value: f.id,
-                          child:
-                              Text(f.name, overflow: TextOverflow.ellipsis),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _mapping[name] = v),
+          if (matched.isNotEmpty)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 8),
+                title: Text('Matched farmers (${matched.length}) · tap to review',
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _ink)),
+                children: matched.map(_matchRow).toList(),
               ),
             ),
-          ],
-        ),
-      );
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Farmer matching (${matched.length} of ${names.length} matched)',
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _farmers.isEmpty
-                  ? 'No farmers were found in this branch.'
-                  : 'Names are matched ignoring case, spacing and punctuation. '
-                      'Pick the right farmer for any name that was not recognised; '
-                      'unmatched names are not imported.',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 12),
-            if (unmatched.isNotEmpty) ...[
-              Row(children: [
-                Icon(Icons.help_outline, size: 18, color: Colors.red[700]),
-                const SizedBox(width: 8),
-                Text('Not matched (${unmatched.length})',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, color: Colors.red[700])),
-              ]),
-              ...unmatched.map(row),
-            ] else
-              Row(children: [
-                Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
-                const SizedBox(width: 8),
-                const Text('All farmers matched'),
-              ]),
-            if (matched.isNotEmpty)
-              Theme(
-                data: Theme.of(context)
-                    .copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: Text('Matched (${matched.length}) — tap to review',
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
-                  children: matched.map(row).toList(),
-                ),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildPreviewSection() {
-    final shown = _onlyIssues ? _rows.where((r) => !_isReady(r)).toList() : _rows;
+  // ---------------------------------------------------------------------------
+  // Step 4: preview table
+  // ---------------------------------------------------------------------------
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Preview (${shown.length} advances)',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Row(
-                  children: [
-                    const Text('Only rows needing attention',
-                        style: TextStyle(fontSize: 13)),
-                    Switch(
-                      value: _onlyIssues,
-                      activeColor: _green,
-                      onChanged: (v) => setState(() => _onlyIssues = v),
+  Widget _buildPreviewSection() {
+    final issues = _rows.where((r) => !_isReady(r)).toList();
+    final shown = _onlyIssues ? issues : _rows;
+
+    Widget filterChip(String label, bool selected, VoidCallback onTap) {
+      return ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        selectedColor: _green.withOpacity(0.15),
+        labelStyle: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          color: selected ? _green : _muted,
+        ),
+        side: BorderSide(color: selected ? _green : _line),
+        showCheckmark: false,
+      );
+    }
+
+    return _stepCard(
+      step: '4',
+      title: 'Review advances',
+      subtitle: 'Tap a date to correct it before importing',
+      trailing: Wrap(
+        spacing: 8,
+        children: [
+          filterChip('All (${_rows.length})', !_onlyIssues,
+              () => setState(() => _onlyIssues = false)),
+          filterChip('Needs attention (${issues.length})', _onlyIssues,
+              () => setState(() => _onlyIssues = true)),
+        ],
+      ),
+      child: shown.isEmpty
+          ? Container(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              alignment: Alignment.center,
+              child: const Text('No rows need attention.',
+                  style: TextStyle(fontSize: 14, color: _muted)),
+            )
+          : Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _line),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 460),
+                  child: SingleChildScrollView(
+                    child: LayoutBuilder(
+                      builder: (context, c) => SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minWidth: c.maxWidth),
+                          child: DataTable(
+                            columnSpacing: 28,
+                            headingRowColor: MaterialStateProperty.all(
+                              const Color(0xFFF3F4F6),
+                            ),
+                            headingTextStyle: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: _muted,
+                            ),
+                            columns: const [
+                              DataColumn(label: Text('ROW')),
+                              DataColumn(label: Text('FARMER (LEDGER)')),
+                              DataColumn(label: Text('AMOUNT'), numeric: true),
+                              DataColumn(label: Text('DATE')),
+                              DataColumn(
+                                  label: Text('RECOVERED'), numeric: true),
+                              DataColumn(label: Text('STATUS')),
+                            ],
+                            rows: shown.map(_buildDataRow).toList(),
+                          ),
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-              ],
-            ),
-            Text('Tap a date to correct it.',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 420,
-              child: SingleChildScrollView(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    headingRowColor: MaterialStateProperty.all(
-                      _green.withOpacity(0.1),
-                    ),
-                    columns: const [
-                      DataColumn(label: Text('Sheet row')),
-                      DataColumn(label: Text('Farmer (ledger)')),
-                      DataColumn(label: Text('Amount'), numeric: true),
-                      DataColumn(label: Text('Date')),
-                      DataColumn(label: Text('Recovered'), numeric: true),
-                      DataColumn(label: Text('Status')),
-                    ],
-                    rows: shown.map(_buildDataRow).toList(),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 
   DataRow _buildDataRow(_AdvRow r) {
     final matched = _mapping[r.ledgerName] != null;
-    String status;
-    Color statusColor;
+    Widget status;
     if (!matched) {
-      status = 'No farmer match';
-      statusColor = Colors.red[700]!;
+      status = _pill('No farmer match', _bad, icon: Icons.person_off_outlined);
     } else if (r.date == null) {
-      status = r.dateIssue ?? 'Missing date';
-      statusColor = Colors.red[700]!;
+      status = _pill(r.dateIssue ?? 'Missing date', _bad,
+          icon: Icons.event_busy_outlined);
     } else if (r.note != null) {
-      status = r.note!;
-      statusColor = Colors.amber[900]!;
+      status = _pill(r.note!, _warn, icon: Icons.warning_amber_rounded);
     } else {
-      status = 'Ready';
-      statusColor = Colors.green[700]!;
+      status = _pill('Ready', _green, icon: Icons.check);
     }
 
     return DataRow(
-      color: _isReady(r)
-          ? null
-          : MaterialStateProperty.all(Colors.red[50]),
+      color: _isReady(r) ? null : MaterialStateProperty.all(Colors.red[50]),
       cells: [
-        DataCell(Text('${r.sheetRow}')),
+        DataCell(Text('${r.sheetRow}',
+            style: const TextStyle(color: _muted, fontSize: 13))),
         DataCell(ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 260),
-          child: Text(r.ledgerName, overflow: TextOverflow.ellipsis),
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Text(r.ledgerName,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 13.5, color: _ink)),
         )),
-        DataCell(Text(_money.format(r.amount))),
+        DataCell(Text(_money.format(r.amount),
+            style: const TextStyle(fontSize: 13.5, color: _ink))),
         DataCell(
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(r.date != null ? _dateFmt.format(r.date!) : 'Set date'),
-              const SizedBox(width: 6),
-              Icon(Icons.edit_calendar, size: 16, color: Colors.grey[600]),
-            ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                  color: r.date == null ? _bad.withOpacity(0.6) : _line),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  r.date != null ? _dateFmt.format(r.date!) : 'Set date',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: r.date == null ? _bad : _ink,
+                    fontWeight:
+                        r.date == null ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(Icons.edit_calendar_outlined,
+                    size: 15, color: _muted),
+                if (r.fixedFrom != null) ...[
+                  const SizedBox(width: 10),
+                  Text(r.fixedFrom!,
+                      style: const TextStyle(fontSize: 11.5, color: _warn)),
+                ],
+              ],
+            ),
           ),
           onTap: () => _pickDate(r),
         ),
-        DataCell(Text(r.recovered > 0 ? _money.format(r.recovered) : '-')),
-        DataCell(Text(status,
-            style: TextStyle(color: statusColor, fontSize: 13))),
+        DataCell(Text(r.recovered > 0 ? _money.format(r.recovered) : '–',
+            style: const TextStyle(fontSize: 13.5, color: _ink))),
+        DataCell(status),
       ],
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Messages + success
+  // ---------------------------------------------------------------------------
 
   Widget _buildMessagesCard({
     required String title,
@@ -646,32 +1057,40 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
     required Color color,
     required Color iconColor,
     required List<String> items,
+    bool expanded = false,
   }) {
-    return Card(
+    return Material(
       color: color,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: iconColor.withOpacity(0.3)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          key: ValueKey('$title-${items.length}'),
+          initiallyExpanded: expanded,
+          leading: Icon(icon, color: iconColor),
+          title: Text('$title (${items.length})',
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700, color: _ink)),
+          subtitle: expanded
+              ? null
+              : const Text('Tap to view details',
+                  style: TextStyle(fontSize: 12, color: _muted)),
+          childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(icon, color: iconColor),
-                const SizedBox(width: 12),
-                Text('$title (${items.length})',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 12),
             ...items.take(30).map((m) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: Text('• $m', style: const TextStyle(fontSize: 13)),
+                  child: Text('• $m',
+                      style: const TextStyle(fontSize: 13, color: _ink)),
                 )),
             if (items.length > 30)
               Text('… and ${items.length - 30} more',
                   style: const TextStyle(
-                      fontSize: 13, fontStyle: FontStyle.italic)),
+                      fontSize: 13, fontStyle: FontStyle.italic, color: _muted)),
           ],
         ),
       ),
@@ -679,33 +1098,36 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
   }
 
   Widget _buildSuccessMessage() {
-    return Card(
-      color: Colors.green[50],
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Icon(Icons.check_circle_outline,
-                color: Colors.green[700], size: 32),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Import finished',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Imported $_importedCount advances to $_selectedBranchName'
-                    '${_duplicateCount > 0 ? ' · skipped $_duplicateCount already-imported duplicates' : ''}',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ],
-              ),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withOpacity(0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, color: Colors.green[700], size: 34),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Import finished',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _ink)),
+                const SizedBox(height: 4),
+                Text(
+                  'Imported $_importedCount advances to $_selectedBranchName'
+                  '${_duplicateCount > 0 ? ' · skipped $_duplicateCount already-imported duplicates' : ''}',
+                  style: const TextStyle(fontSize: 14, color: _ink),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -951,6 +1373,7 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
           dateIssue: dateResult.issue,
           recovered: recovered,
           recoveryDate: recDate,
+          fixedFrom: dateResult.fixedFrom,
         );
 
         if (adv.date != null) {
@@ -1003,7 +1426,15 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
       // Excel parsed a typed d/m date as m/d. Flip it back when possible.
       if (_swapExcelDates && d <= 12) {
         final flipped = _validDate(y, d, m);
-        if (flipped != null) return _DateResult(flipped, null);
+        if (flipped != null) {
+          final raw = _validDate(y, m, d);
+          final changed = raw != null && (raw.day != flipped.day || raw.month != flipped.month);
+          return _DateResult(
+            flipped,
+            null,
+            changed ? 'Excel showed ${_dateFmt.format(raw!)}' : null,
+          );
+        }
       }
       final asIs = _validDate(y, m, d);
       return _DateResult(asIs, asIs == null ? 'Invalid date' : null);
@@ -1098,6 +1529,8 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       setState(() => _errors = ['Not logged in']);
+      _showSnack('You are not signed in. Please sign out and sign in again.');
+      _scrollTop();
       return;
     }
 
@@ -1204,19 +1637,21 @@ class _ImportLedgerScreenState extends State<ImportLedgerScreen> {
         _rows = _rows.where((r) => !_isReady(r)).toList();
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Imported $imported advances'
-              '${duplicates > 0 ? ' ($duplicates duplicates skipped)' : ''}'),
-          backgroundColor: Colors.green,
-        ),
+      _showSnack(
+        'Imported $imported advances'
+        '${duplicates > 0 ? ' ($duplicates duplicates skipped)' : ''}',
+        error: false,
       );
-    } catch (e) {
+      _scrollTop();
+    } catch (e, st) {
+      debugPrint('Import error: $e\n$st');
       if (!mounted) return;
       setState(() {
         _errors = ['Import error: $e'];
         _isLoading = false;
       });
+      _showSnack('Import failed: $e');
+      _scrollTop();
     }
   }
 }
