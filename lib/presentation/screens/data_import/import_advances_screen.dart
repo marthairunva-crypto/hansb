@@ -611,7 +611,7 @@ class _ImportAdvancesScreenState extends State<ImportAdvancesScreen> {
     });
 
     try {
-      final converter = const CsvToListConverter();
+      final converter = CsvToListConverter();
       final rows = converter.convert(csvString);
       
       // Skip header row if it exists
